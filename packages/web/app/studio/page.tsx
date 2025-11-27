@@ -227,11 +227,11 @@ export default function Studio() {
           borderRadius: 24,
           padding: 20,
           background:
-            'linear-gradient(135deg, rgba(15,23,42,0.92), rgba(30,64,175,0.88))',
-          border: '1px solid rgba(148,163,184,0.4)',
+            'linear-gradient(135deg, rgba(192, 201, 221, 0.92), rgba(211, 240, 48, 0.88))',
+          border: '1px solid rgba(125, 218, 18, 0.4)',
           boxShadow:
-            '0 20px 45px rgba(15,23,42,0.9), 0 0 0 1px rgba(15,23,42,0.8)',
-          color: '#f9fafb',
+            '0 20px 45px rgba(151, 207, 45, 0.9), 0 0 0 1px rgba(163, 161, 36, 0.8)',
+          color: '#c51f1fff',
           backdropFilter: 'blur(18px)',
         }}
       >
@@ -285,7 +285,7 @@ export default function Studio() {
                 borderRadius: 16,
                 border: '1px dashed rgba(148,163,184,0.6)',
                 background:
-                  'linear-gradient(145deg, rgba(15,23,42,0.9), rgba(17,24,39,0.9))',
+                  'linear-gradient(145deg, rgba(170, 196, 22, 0.9), rgba(223, 219, 14, 0.9))',
               }}
             >
               <p style={{ marginBottom: 4, fontSize: 11, color: '#a5b4fc' }}>
@@ -300,7 +300,7 @@ export default function Studio() {
                 borderRadius: 16,
                 border: '1px dashed rgba(148,163,184,0.5)',
                 background:
-                  'linear-gradient(145deg, rgba(17,24,39,0.9), rgba(30,64,175,0.75))',
+                  'linear-gradient(145deg, rgba(218, 162, 11, 0.9), rgba(53, 228, 10, 0.75))',
               }}
             >
               <p style={{ marginBottom: 4, fontSize: 11, color: '#f9a8d4' }}>
@@ -352,7 +352,7 @@ export default function Studio() {
                           borderRadius: '999px',
                           overflow: 'hidden',
                           border: '1px solid rgba(15,23,42,0.8)',
-                          background: '#020617',
+                          background: '#db680aff',
                         }}
                       >
                         {/* tiny preview circle */}
@@ -401,7 +401,7 @@ export default function Studio() {
                   background:
                     selectedPrompt?.label === p.label
                       ? 'linear-gradient(135deg, #22c55e, #22d3ee)'
-                      : 'rgba(15,23,42,0.9)',
+                      : 'rgba(9, 233, 39, 0.9)',
                   color: '#f9fafb',
                   fontSize: 12,
                   cursor: 'pointer',
@@ -432,7 +432,7 @@ export default function Studio() {
               padding: 10,
               borderRadius: 10,
               border: '1px solid rgba(148,163,184,0.8)',
-              background: 'rgba(15,23,42,0.9)',
+              background: 'rgba(14, 241, 44, 0.9)',
               color: '#f9fafb',
               fontSize: 13,
               outline: 'none',
@@ -448,7 +448,7 @@ export default function Studio() {
                 padding: 8,
                 borderRadius: 10,
                 border: '1px solid rgba(148,163,184,0.8)',
-                background: 'rgba(15,23,42,0.9)',
+                background: 'rgba(14, 241, 44, 0.9)',
                 color: '#e5e7eb',
                 fontSize: 12,
               }}
@@ -466,7 +466,7 @@ export default function Studio() {
                 padding: 8,
                 borderRadius: 10,
                 border: '1px solid rgba(148,163,184,0.8)',
-                background: 'rgba(15,23,42,0.9)',
+                background: 'rgba(14, 241, 44, 0.9)',
                 color: '#e5e7eb',
                 fontSize: 12,
               }}
@@ -491,7 +491,7 @@ export default function Studio() {
                 padding: 8,
                 borderRadius: 10,
                 border: '1px solid rgba(148,163,184,0.8)',
-                background: 'rgba(15,23,42,0.9)',
+                background: 'rgba(14, 241, 44, 0.9)',
                 color: '#f9fafb',
                 fontSize: 12,
               }}
@@ -533,7 +533,7 @@ export default function Studio() {
               borderRadius: 16,
               padding: 16,
               marginTop: 18,
-              background: 'rgba(15,23,42,0.85)',
+              background: 'rgba(14, 241, 44, 0.9)',
             }}
           >
             <h3 style={{ fontWeight: 700, marginBottom: 4 }}>Job: {job.id}</h3>
