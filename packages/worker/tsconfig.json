@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "rootDir": "..",
+    "outDir": "dist"
+  },
+  "typeRoots": ["./types", "./node_modules/@types"],
+  "include": [
+    "src",
+    "../shared/src",
+    "../api/src"
+  ]
+}

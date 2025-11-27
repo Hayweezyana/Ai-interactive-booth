@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AssetKind {
+  SOURCE_IMAGE
+  INTERMEDIATE_VIDEO
+  TTS_AUDIO
+  FINAL_VIDEO
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  FAILED
+  COMPLETE
+}
+
+enum JobStage {
+  QUEUED
+  GEMINI_PREP
+  VIDEO_GENERATE
+  TTS_GENERATE
+  MUX
+  COMPLETE
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  jobs      Job[]
+}
+
+model Asset {
+  id        String    @id @default(cuid())
+  kind      AssetKind
+  bucketKey String
+  mime      String
+  bytes     Int?
+  width     Int?
+  height    Int?
+  createdAt DateTime  @default(now())
+
+  // Back-relations to Job (named relations)
+  sourceForJobs Job[] @relation("job_source_image")
+  resultForJobs Job[] @relation("job_result_video")
+  ttsForJobs    Job[] @relation("job_tts_audio")
+}
+
+model Job {
+  id     String  @id @default(cuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  status JobStatus @default(PENDING)
+  stage  JobStage  @default(QUEUED)
+  error  String?
+
+  sourceImageId String
+  sourceImage   Asset  @relation("job_source_image", fields: [sourceImageId], references: [id])
+
+  resultVideoId String?
+  resultVideo   Asset?  @relation("job_result_video", fields: [resultVideoId], references: [id])
+
+  ttsAudioId String?
+  ttsAudio   Asset?  @relation("job_tts_audio", fields: [ttsAudioId], references: [id])
+
+  prompt       String
+  promptPreset String?
+  voicePreset  String?
+  ttsScript    String?
+  aspect       String
+  durationSec  Int
+  styleHints   Json?
+  providerMeta Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Back-relation to Share
+  shares Share[]
+}
+
+model Share {
+  id        String    @id @default(cuid())
+  jobId     String
+  job       Job       @relation(fields: [jobId], references: [id])
+  slug      String    @unique
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+}
