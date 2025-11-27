@@ -21,7 +21,7 @@ services:
         fromService:
           type: web
           name: ai-interactive-api
-          property: url
+          property: connectionString
 
   # =========================
   # 2) API server (Express)
