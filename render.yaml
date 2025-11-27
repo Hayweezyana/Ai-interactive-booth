@@ -1,0 +1,139 @@
+services:
+  # =========================
+  # 1) Next.js frontend (web)
+  # =========================
+  - type: web
+    name: ai-interactive-web
+    env: node
+    plan: free
+    rootDir: packages/web
+    buildCommand: |
+      npm install
+      npm run build --workspace @app/web
+    startCommand: |
+      npm run start --workspace @app/web
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      # This will be the base URL of your API *without* /api.
+      # In your frontend code, compute API = `${NEXT_PUBLIC_API_BASE}/api`.
+      - key: NEXT_PUBLIC_API_BASE
+        fromService:
+          type: web
+          name: ai-interactive-api
+          property: url
+
+  # =========================
+  # 2) API server (Express)
+  # =========================
+  - type: web
+    name: ai-interactive-api
+    env: node
+    plan: free
+    rootDir: packages/api
+    buildCommand: |
+      npm install
+      npm run build --workspace @app/api
+    startCommand: |
+      npm run start --workspace @app/api
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+
+      # Database & Redis from Render-managed resources below
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-interactive-db
+          property: connectionString
+
+      - key: REDIS_URL
+        fromDatabase:
+          name: ai-interactive-redis
+          property: connectionString
+
+      # --- S3 config (non-secret) ---
+      - key: S3_BUCKET
+        value: ai-interactive-booth-uploads
+      - key: S3_REGION
+        value: eu-north-1
+
+      # --- AWS creds (set real values in Render dashboard after first deploy) ---
+      - key: AWS_ACCESS_KEY_ID
+        value: REPLACE_ME_IN_RENDER
+      - key: AWS_SECRET_ACCESS_KEY
+        value: REPLACE_ME_IN_RENDER
+
+      # --- Gemini ---
+      - key: GEMINI_API_KEY
+        value: REPLACE_ME_IN_RENDER
+
+      # --- Runway ---
+      - key: RUNWAYML_API_SECRET
+        value: REPLACE_ME_IN_RENDER
+      - key: RUNWAYML_MODEL
+        value: gen4_turbo
+      - key: RUNWAYML_VERSION
+        value: "2024-11-06"
+
+      # Any other env you already use in @shared/env
+      # - key: SOME_OTHER_KEY
+      #   value: REPLACE_ME_IF_NEEDED
+
+  # =========================
+  # 3) Worker (BullMQ)
+  # =========================
+  - type: worker
+    name: ai-interactive-worker
+    env: node
+    plan: free
+    rootDir: packages/worker
+    buildCommand: |
+      npm install
+      npm run build --workspace @app/worker
+    startCommand: |
+      npm run start --workspace @app/worker
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-interactive-db
+          property: connectionString
+
+      - key: REDIS_URL
+        fromDatabase:
+          name: ai-interactive-redis
+          property: connectionString
+
+      - key: S3_BUCKET
+        value: ai-interactive-booth-uploads
+      - key: S3_REGION
+        value: eu-north-1
+
+      - key: AWS_ACCESS_KEY_ID
+        value: REPLACE_ME_IN_RENDER
+      - key: AWS_SECRET_ACCESS_KEY
+        value: REPLACE_ME_IN_RENDER
+
+      - key: GEMINI_API_KEY
+        value: REPLACE_ME_IN_RENDER
+
+      - key: RUNWAYML_API_SECRET
+        value: REPLACE_ME_IN_RENDER
+      - key: RUNWAYML_MODEL
+        value: gen4_turbo
+      - key: RUNWAYML_VERSION
+        value: "2024-11-06"
+
+databases:
+  # Render-managed Postgres
+  - name: ai-interactive-db
+    plan: free
+    databaseName: ai_interactive
+    user: app
+
+  # Render-managed Redis
+  - name: ai-interactive-redis
+    plan: free
+    ipAllowList: []  # empty = allow all Render services in same account
