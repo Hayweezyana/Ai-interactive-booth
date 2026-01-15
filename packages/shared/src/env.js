@@ -8,13 +8,14 @@ exports.env = void 0;
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const dotenv_1 = __importDefault(require("dotenv"));
-// find the closest .env by walking upward (monorepo-friendly)
 function loadClosestDotenv(startDir) {
     let dir = startDir;
-    for (let i = 0; i < 6; i++) { // don't walk forever
+    for (let i = 0; i < 6; i++) {
         const candidate = node_path_1.default.join(dir, '.env');
         if (node_fs_1.default.existsSync(candidate)) {
-            dotenv_1.default.config({ path: candidate });
+            // Use override: true to ensure the local .env values 
+            // take precedence over any shell-injected "undefined" values
+            dotenv_1.default.config({ path: candidate, override: true });
             return;
         }
         const parent = node_path_1.default.dirname(dir);
@@ -22,10 +23,10 @@ function loadClosestDotenv(startDir) {
             break;
         dir = parent;
     }
-    // fallback: normal dotenv (loads from CWD if present)
     dotenv_1.default.config();
 }
 loadClosestDotenv(__dirname);
+dotenv_1.default.config({ path: node_path_1.default.resolve(process.cwd(), '../../.env') });
 exports.env = {
     APP_ORIGIN: process.env.APP_ORIGIN,
     DATABASE_URL: process.env.DATABASE_URL,
@@ -36,11 +37,23 @@ exports.env = {
     S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
     S3_PUBLIC_BASE: process.env.S3_PUBLIC_BASE,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY || 'mock',
+    BANANA_API_KEY: process.env.BANANA_API_KEY || 'mock',
+    BANANA_MODEL_KEY: process.env.BANANA_MODEL_KEY || 'mock',
+    BANANA_URL: process.env.BANANA_URL || 'mock',
+    FAL_KEY: process.env.FAL_KEY || 'mock',
     VIDEO_PROVIDER: process.env.VIDEO_PROVIDER || 'mock',
     VIDEO_API_KEY: process.env.VIDEO_API_KEY || 'mock',
     TTS_PROVIDER: process.env.TTS_PROVIDER || 'mock',
     TTS_API_KEY: process.env.TTS_API_KEY || 'mock',
-    EMAIL_PROVIDER: process.env.EMAIL_PROVIDER || 'resend',
-    RESEND_API_KEY: process.env.RESEND_API_KEY || '',
-    EMAIL_FROM: process.env.EMAIL_FROM || 'Studio <no-reply@example.com>',
+    SMTP_HOST: process.env.SMTP_HOST || '',
+    SMTP_PORT: process.env.SMTP_PORT || '',
+    SMTP_SECURE: process.env.SMTP_SECURE || 'false',
+    SMTP_USER: process.env.SMTP_USER || '',
+    SMTP_PASS: process.env.SMTP_PASS || '',
+    EMAIL_PROVIDER: process.env.EMAIL_PROVIDER || 'smtp',
+    EMAIL_FROM: process.env.EMAIL_FROM || 'Immersia AI Studio <no-reply@immersiavr.com>',
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY || 'mock',
+    GOOGLE_CLOUD_PROJECT: process.env.GOOGLE_CLOUD_PROJECT || '',
+    GOOGLE_CLOUD_LOCATION: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1',
+    GOOGLE_APPLICATION_CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS || 'service-account-key.json',
 };

@@ -19,14 +19,15 @@ function storageKey(kind, name) {
     return `${kind}/${name || crypto_1.default.randomUUID()}`;
 }
 function publicUrl(key) {
-    return `${env_1.env.S3_PUBLIC_BASE.replace(/\/$/, '')}/${key}`;
+    const base = process.env.S3_PUBLIC_BASE || `https://ai-interactive-booth-uploads.s3.eu-north-1.amazonaws.com`;
+    return `${base.replace(/\/$/, '')}/${key.replace(/^\//, '')}`;
 }
 async function getSignedUpload(mime = 'image/*') {
     const key = storageKey('uploads');
     const { url, fields } = await (0, s3_presigned_post_1.createPresignedPost)(s3, {
         Bucket: env_1.env.S3_BUCKET,
         Key: key,
-        Conditions: [["content-length-range", 0, 30_000_000]],
+        Conditions: [["content-length-range", 0, 30000000]],
         Fields: { 'Content-Type': mime },
         Expires: 600
     });
