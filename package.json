@@ -1,5 +1,8 @@
 {"name":"ai-video-pipeline","private":true,"workspaces":["packages/*"],"scripts":{
-    "build": "npm run build -w packages/shared && npm run build -w packages/api && npm run build -w packages/web",
+    "build:shared": "npm run build --workspace=@app/shared",
+    "build:api": "npm run build --workspace=@app/api",
+    "build:web": "npm run build --workspace=@app/web",
+    "build:worker": "npm run build --workspace=@app/worker",
     "dev:web": "npm --workspace packages/web run dev",
     "dev:api": "npm --workspace packages/api run dev",
     "dev:worker": "npm --workspace packages/worker run dev",
