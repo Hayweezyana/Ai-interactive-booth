@@ -27,7 +27,7 @@ async function getSignedUpload(mime = 'image/*') {
     const { url, fields } = await (0, s3_presigned_post_1.createPresignedPost)(s3, {
         Bucket: env_1.env.S3_BUCKET,
         Key: key,
-        Conditions: [["content-length-range", 0, 30000000]],
+        Conditions: [["content-length-range", 0, 30_000_000]],
         Fields: { 'Content-Type': mime },
         Expires: 600
     });

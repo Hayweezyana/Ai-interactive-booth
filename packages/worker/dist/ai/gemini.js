@@ -4,7 +4,7 @@ exports.planFromImage = planFromImage;
 const generative_ai_1 = require("@google/generative-ai");
 const genAI = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 async function planFromImage(opts) {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
     const system = `You are a creative director turning a still image and a user prompt into a short animated video plan.
 Return concise JSON with:
 - narration: a 1-2 sentence voiceover

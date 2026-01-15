@@ -19,7 +19,8 @@ function storageKey(kind, name) {
     return `${kind}/${name || crypto_1.default.randomUUID()}`;
 }
 function publicUrl(key) {
-    return `${env_1.env.S3_PUBLIC_BASE.replace(/\/$/, '')}/${key}`;
+    const base = process.env.S3_PUBLIC_BASE || `https://ai-interactive-booth-uploads.s3.eu-north-1.amazonaws.com`;
+    return `${base.replace(/\/$/, '')}/${key.replace(/^\//, '')}`;
 }
 async function getSignedUpload(mime = 'image/*') {
     const key = storageKey('uploads');

@@ -57,10 +57,13 @@ exports.videoGen = {
         setTimeout(async () => {
             jobs.set(id, { state: 'running' });
             try {
+                console.log('[videoGen] mock generation starting for', id);
                 const key = await makeMockMp4();
+                console.log('[videoGen] mock generation complete, key:', key);
                 jobs.set(id, { state: 'complete', key });
             }
-            catch {
+            catch (err) {
+                console.error('[videoGen] mock generation failed:', err);
                 jobs.set(id, { state: 'failed' });
             }
         }, 1000);

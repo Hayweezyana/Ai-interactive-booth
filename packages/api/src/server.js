@@ -8,11 +8,11 @@ const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
 const routes_1 = require("./routes");
-console.log('[AWS env]', {
-    id: process.env.S3_ACCESS_KEY_ID,
-    region: process.env.S3_REGION || process.env.AWS_REGION,
-    bucket: process.env.S3_BUCKET
-});
+// console.log('[AWS env]', {
+//   id: process.env.S3_ACCESS_KEY_ID,
+//   region: process.env.S3_REGION || process.env.AWS_REGION,
+//   bucket: process.env.S3_BUCKET
+// })
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
 app.use(express_1.default.json({ limit: '2mb' }));

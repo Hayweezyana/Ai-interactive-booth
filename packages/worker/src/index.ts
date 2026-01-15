@@ -4,8 +4,8 @@ dotenv.config({ path: path.resolve(__dirname, '../../../../.env') })
 
 import { Worker } from 'bullmq'
 import Redis from 'ioredis'
-import { prisma } from '@shared/prisma'
-import { publicUrl } from '@shared/utils/storage'
+import { prisma } from '@app/shared/prisma'
+import { publicUrl } from '@app/shared/utils/storage'
 import { s3PutBuffer, s3PutFromUrl } from './util/s3PutFromUrl'
 import { videoGen } from './video/runway'
 
@@ -16,7 +16,7 @@ import {
 } from './prompts/identityPrompts'
 
 import { generateWithFallback } from './util/generateLockedImage'
-import { env } from '@shared/env'
+import { env } from '@app/shared/env'
 
 const connection = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: null,

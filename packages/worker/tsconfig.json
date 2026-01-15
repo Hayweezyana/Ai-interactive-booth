@@ -3,13 +3,14 @@
   "compilerOptions": {
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "rootDir": "..",
-    "outDir": "dist"
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "baseUrl": ".",
+    "rootDir": "src",
+    "outDir": "dist",
+    "paths": {
+      "@shared/*": ["../shared/dist/*"]
+    }
   },
-  "typeRoots": ["./types", "./node_modules/@types"],
-  "include": [
-    "src",
-    "../shared/src",
-    "../api/src"
-  ]
+  "include": ["src"]
 }

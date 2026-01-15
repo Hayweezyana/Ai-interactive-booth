@@ -1,5 +1,5 @@
 import OpenAI from 'openai'
-import { env } from '@shared/env'
+import { env } from '@app/shared/env'
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY })
 

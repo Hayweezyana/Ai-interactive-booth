@@ -1,5 +1,5 @@
 import { PredictionServiceClient, helpers } from '@google-cloud/aiplatform';
-import { env } from '@shared/env';
+import { env } from '@app/shared/env';
 import path from 'path';
 
 // 1. Get the path from our env object

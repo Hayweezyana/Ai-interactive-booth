@@ -1,6 +1,5 @@
 // packages/worker/src/video/bananaProvider.ts
 import type { GenerateVideoInput, GenerateVideoResult, VideoProvider } from '@shared/video/provider'
-import fetch from 'node-fetch'
 import type { VideoGenerator } from '@shared/types'
 
 const endpoint = (process.env.BANANA_URL || '').trim()
