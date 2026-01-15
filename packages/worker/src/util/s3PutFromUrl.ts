@@ -44,7 +44,7 @@
 //   return key
 // }
 
-import { storageKey, persistBuffer } from '@shared/utils/storage'
+import { storageKey, persistBuffer } from '@app/shared/utils/storage'
 
 /**
  * Upload a remote URL directly into S3
