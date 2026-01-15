@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer'
 import { env } from '../env'
 
-let transporter: nodemailer.Transporter | null = null
+let transporter: ReturnType<typeof nodemailer.createTransport> | null = null
 
 function getTransporter() {
   if (transporter) return transporter
