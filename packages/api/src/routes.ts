@@ -1,27 +1,23 @@
-import { Router } from 'express';
-import { z } from 'zod';
-import { prisma } from '@shared/prisma';
-import { getSignedUpload, publicUrl } from '@shared/utils/storage';
-import { enqueueJob } from './queue/enqueue';
-import { generateQR } from '../../shared/src/utils/qr';
-import { sendEmail } from '@shared/utils/email';
+import { Router } from 'express'
+import { z } from 'zod'
+import { prisma } from '@shared/prisma'
+import { getSignedUpload, publicUrl } from '@shared/utils/storage'
+import { enqueueJob } from './queue/enqueue'
+import { generateQR } from '../../shared/src/utils/qr'
+import { sendEmail } from '@shared/utils/email'
 import { randomUUID } from 'node:crypto'
 import { S3Client } from '@aws-sdk/client-s3'
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post'
 import { env } from '@shared/env'
 import { s3 } from './aws'
 
-export const router = Router();
+export const router = Router()
 
-// const s3 = new S3Client({
-//   region: process.env.S3_REGION || process.env.AWS_REGION,
-//   credentials: {
-//     accessKeyId: process.env.f!,
-//     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-//     sessionToken: process.env.AWS_SESSION_TOKEN,
-//   },
-// })
-
+/**
+ * POST /upload-url
+ * unchanged behaviour: returns url, fields, bucketKey for a single upload.
+ * Call this once per image you need to upload (Photo 1, Photo 2, ...).
+ */
 router.post('/upload-url', async (req, res, next) => {
   try {
     const { mime } = req.body || {}
@@ -45,9 +41,7 @@ router.post('/upload-url', async (req, res, next) => {
 
     return res.json({ url, fields, bucketKey: key })
   } catch (err: any) {
-    // Log full error server-side
     console.error('[upload-url] error:', err)
-    // Send JSON to client
     return res.status(500).json({
       error: 'UPLOAD_URL_FAILED',
       message: err?.message || 'Unknown error',
@@ -55,44 +49,195 @@ router.post('/upload-url', async (req, res, next) => {
   }
 })
 
-
+/**
+ * POST /jobs
+ *
+ * Body:
+ * {
+ *   bucketKey: string,                     // REQUIRED (primary image)
+ *   secondaryBucketKey?: string,           // OPTIONAL (secondary image)
+ *   prompt: string,
+ *   promptPreset?: string,
+ *   voicePreset?: string,
+ *   ttsScript?: string,
+ *   aspect?: string,
+ *   durationSec: number,
+ *   styleHints?: any
+ * }
+ *
+ * Behavior:
+ * - create Asset for primary image (SOURCE_IMAGE)
+ * - optionally create Asset for secondary image (SECONDARY_IMAGE)
+ * - create Job and set sourceImageId and secondaryImageId (if present)
+ * - enqueue job
+ */
 router.post('/jobs', async (req, res, next) => {
-try {
-const schema = z.object({ bucketKey: z.string(), prompt: z.string().min(5), promptPreset: z.string().optional(), voicePreset: z.string().optional(), ttsScript: z.string().optional(), aspect: z.string().default('16:9'), durationSec: z.number().int().min(3).max(60), styleHints: z.any().optional() });
-const input = schema.parse(req.body);
-const image = await prisma.asset.create({ data: { kind: 'SOURCE_IMAGE', bucketKey: input.bucketKey, mime: 'image/*' } });
-const job = await prisma.job.create({ data: { sourceImageId: image.id, prompt: input.prompt, promptPreset: input.promptPreset, voicePreset: input.voicePreset, ttsScript: input.ttsScript, aspect: input.aspect, durationSec: input.durationSec } });
-await enqueueJob(job.id); res.json({ jobId: job.id });
-} catch (e) { next(e); }
-});
-
-
-router.get('/jobs/:id', async (req, res, next) => {
-try { const job = await prisma.job.findUnique({ where: { id: req.params.id }, include: { resultVideo: true } }); if (!job) return res.status(404).end(); const resultUrl = job.resultVideo ? publicUrl(job.resultVideo.bucketKey) : undefined; res.json({ ...job, resultUrl }); }
-catch (e) { next(e); }
-});
-
-
-router.post('/jobs/:id/email', async (req, res, next) => {
-try { const schema = z.object({ to: z.string().email() }); const { to } = schema.parse(req.body); const job = await prisma.job.findUnique({ where: { id: req.params.id }, include: { resultVideo: true } }); if (!job || !job.resultVideo) return res.status(400).json({ error: 'No result yet' }); const url = publicUrl(job.resultVideo.bucketKey); await sendEmail(to, 'Your generated video', `<p>Your video is ready:</p><p><a href="${url}">Download/Watch</a></p>`); res.json({ ok: true }); }
-catch (e) { next(e); }
-});
-
-
-router.get('/jobs/:id/qr', async (req, res, next) => {
   try {
-    const jobId = req.params.id;
-    // try find existing share for this job
-    let share = await prisma.share.findFirst({ where: { jobId } });
+    const schema = z.object({
+      bucketKey: z.string(),
+      secondaryBucketKey: z.string().optional(),
+      prompt: z.string().min(5),
+      promptPreset: z.string().optional(),
+      voicePreset: z.string().optional(),
+      ttsScript: z.string().optional(),
+      aspect: z.string().default('16:9'),
+      durationSec: z.number().int().min(3).max(60),
+      styleHints: z.any().optional(),
+    })
+    const input = schema.parse(req.body)
 
-    if (!share) {
-      const slug = Math.random().toString(36).slice(2, 10);
-      share = await prisma.share.create({
-        data: { jobId, slug }
-      });
+    // Create primary asset
+    const image = await prisma.asset.create({
+      data: {
+        kind: 'SOURCE_IMAGE',
+        bucketKey: input.bucketKey,
+        mime: 'image/*',
+      },
+    })
+
+    // Create optional secondary asset
+    let secondaryImage: typeof image | null = null
+    if (input.secondaryBucketKey) {
+      secondaryImage = await prisma.asset.create({
+        data: {
+          kind: 'SOURCE_IMAGE' as any,
+          bucketKey: input.secondaryBucketKey,
+          mime: 'image/*',
+        },
+      })
     }
 
-    const png = await generateQR(`${process.env.APP_ORIGIN}/v/${share.slug}`);
-    res.setHeader('Content-Type', 'image/png').send(png);
-  } catch (e) { next(e); }
-});
+    // Create job, linking both images via relation connect (use relation fields, not raw foreign keys)
+    const jobData: any = {
+      sourceImage: { connect: { id: image.id } },
+      secondaryImage: secondaryImage ? { connect: { id: secondaryImage.id } } : undefined,
+      prompt: input.prompt,
+      promptPreset: input.promptPreset,
+      voicePreset: input.voicePreset,
+      ttsScript: input.ttsScript,
+      aspect: input.aspect,
+      durationSec: input.durationSec,
+      // any other fields you have on Job...
+    }
+
+    if (secondaryImage) {
+      jobData.secondaryImage = { connect: { id: secondaryImage.id } }
+    }
+
+    const job = await prisma.job.create({
+      data: jobData,
+    })
+
+    await enqueueJob(job.id)
+
+    return res.json({ jobId: job.id })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/**
+ * GET /jobs/:id
+ * Returns the job plus public URLs for source & secondary image (if present) and result video URL.
+ */
+router.get('/jobs/:id', async (req, res, next) => {
+  try {
+    // load job with relations that exist on the generated client (resultVideo + sourceImage)
+    const job = await prisma.job.findUnique({
+      where: { id: req.params.id },
+      include: { resultVideo: true, sourceImage: true },
+    })
+    if (!job) return res.status(404).end()
+
+    const resultUrl = job.resultVideo ? publicUrl(job.resultVideo.bucketKey) : undefined
+    const sourceImageUrl = job.sourceImage ? publicUrl(job.sourceImage.bucketKey) : undefined
+
+    // secondary image relation may not be present on the generated client types,
+    // so load it explicitly if the job has a secondaryImageId scalar field.
+    let secondaryImageUrl: string | undefined = undefined
+    // use any/ts-ignore to avoid type errors if the scalar field isn't present in types
+    // @ts-ignore
+    const secondaryId = (job as any).secondaryImageId
+    if (secondaryId) {
+      const secondary = await prisma.asset.findUnique({ where: { id: secondaryId } })
+      if (secondary) secondaryImageUrl = publicUrl(secondary.bucketKey)
+    }
+
+    res.json({
+      ...job,
+      resultUrl,
+      sourceImageUrl,
+      secondaryImageUrl,
+    })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/**
+ * POST /jobs/:id/email
+ * Send generated video via email.
+ */
+router.post('/jobs/:id/email', async (req, res, next) => {
+  try {
+    const schema = z.object({ to: z.string().email() })
+    const { to } = schema.parse(req.body)
+    const job = await prisma.job.findUnique({
+      where: { id: req.params.id },
+      include: { resultVideo: true },
+    })
+    if (!job || !job.resultVideo) return res.status(400).json({ error: 'No result yet' })
+    const url = publicUrl(job.resultVideo.bucketKey)
+    await sendEmail(to,'Your video is ready 🎉',
+  `
+    <p>Your video is ready:</p>
+    <p><a href="${url}">Watch / Download Video</a></p>
+    <p>You can also scan the QR code on the screen to access it.</p>
+  `)
+    res.json({ ok: true })
+  } catch (e) {
+    next(e)
+  }
+})
+
+/**
+ * GET /jobs/:id/qr
+ * Create or fetch share record and return QR PNG
+ */
+router.get('/jobs/:id/qr', async (req, res, next) => {
+  try {
+    const jobId = req.params.id
+    let share = await prisma.share.findFirst({ where: { jobId } })
+
+    if (!share) {
+      const slug = Math.random().toString(36).slice(2, 10)
+      share = await prisma.share.create({
+        data: { jobId, slug },
+      })
+    }
+
+    const png = await generateQR(`${process.env.APP_ORIGIN}/v/${share.slug}`)
+    res.setHeader('Content-Type', 'image/png').send(png)
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/share/:slug', async (req, res, next) => {
+  try {
+    const share = await prisma.share.findUnique({
+      where: { slug: req.params.slug },
+      include: { job: { include: { resultVideo: true } } },
+    })
+
+    if (!share?.job?.resultVideo) {
+      return res.status(404).json({ error: 'Not found' })
+    }
+
+    res.json({
+      url: publicUrl(share.job.resultVideo.bucketKey),
+    })
+  } catch (e) {
+    next(e)
+  }
+})

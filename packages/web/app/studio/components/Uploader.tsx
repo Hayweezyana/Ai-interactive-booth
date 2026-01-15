@@ -243,7 +243,7 @@ export function Uploader({ onPick }: Props) {
               onChange={(e) => pickFromInput(e.target.files?.[0] || null)}
             />
             <div style={{ fontSize: 12, color: '#a1a1aa', marginTop: 6 }}>
-              Tip: On phones, the picker can open the camera thanks to <code>capture=&quot;environment&quot;</code>.
+              Tip: On phones, the picker can open the cam <code>capture=&quot;environment&quot;</code>.
             </div>
           </div>
         ) : (

@@ -1,11 +1,11 @@
 -- CreateEnum
-CREATE TYPE "AssetKind" AS ENUM ('SOURCE_IMAGE', 'INTERMEDIATE_VIDEO', 'TTS_AUDIO', 'FINAL_VIDEO');
+CREATE TYPE "AssetKind" AS ENUM ('SOURCE_IMAGE', 'SECONDARY_IMAGE', 'INTERMEDIATE_VIDEO', 'TTS_AUDIO', 'FINAL_VIDEO');
 
 -- CreateEnum
 CREATE TYPE "JobStatus" AS ENUM ('PENDING', 'RUNNING', 'FAILED', 'COMPLETE');
 
 -- CreateEnum
-CREATE TYPE "JobStage" AS ENUM ('QUEUED', 'GEMINI_PREP', 'VIDEO_GENERATE', 'TTS_GENERATE', 'MUX', 'COMPLETE');
+CREATE TYPE "JobStage" AS ENUM ('QUEUED', 'GEMINI_PREP', 'IMAGE_GENERATE', 'SAVING', 'VIDEO_GENERATE', 'TTS_GENERATE', 'MUX', 'COMPLETE');
 
 -- CreateTable
 CREATE TABLE "User" (
@@ -39,6 +39,7 @@ CREATE TABLE "Job" (
     "stage" "JobStage" NOT NULL DEFAULT 'QUEUED',
     "error" TEXT,
     "sourceImageId" TEXT NOT NULL,
+    "secondaryImageId" TEXT,
     "resultVideoId" TEXT,
     "ttsAudioId" TEXT,
     "prompt" TEXT NOT NULL,
@@ -77,6 +78,9 @@ ALTER TABLE "Job" ADD CONSTRAINT "Job_userId_fkey" FOREIGN KEY ("userId") REFERE
 
 -- AddForeignKey
 ALTER TABLE "Job" ADD CONSTRAINT "Job_sourceImageId_fkey" FOREIGN KEY ("sourceImageId") REFERENCES "Asset"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Job" ADD CONSTRAINT "Job_secondaryImageId_fkey" FOREIGN KEY ("secondaryImageId") REFERENCES "Asset"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Job" ADD CONSTRAINT "Job_resultVideoId_fkey" FOREIGN KEY ("resultVideoId") REFERENCES "Asset"("id") ON DELETE SET NULL ON UPDATE CASCADE;

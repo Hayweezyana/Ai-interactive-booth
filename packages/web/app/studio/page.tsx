@@ -4,7 +4,9 @@ import { useEffect, useState, FormEvent } from 'react'
 import { Uploader } from './components/Uploader'
 import { Progress } from './components/Progress'
 
-const API = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:4000/api'
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:4000'
+const API = `${API_BASE}/api`
+
 
 type Job = {
   id: string
@@ -28,25 +30,80 @@ type SecondPhotoOption = {
 const DEFAULT_PROMPTS: DefaultPrompt[] = [
   {
     label: 'Hug Ruger',
-    text: 'Create a moment where the person in the first photo and the person in the second photo hug and smile with both faces showing in wide angle.',
+    text: `
+make the image of the person in the first photo hug the second person from the second photo professionally and naturally, wide angle and portrait.
+
+Use the provided reference images as visual inspiration for the general look
+and style of the people, while creating a new, original image.
+
+Guidelines:
+- Both faces clearly visible
+- Natural expressions and relaxed body language
+- Realistic lighting and everyday photography style
+- Casual clothing
+- No dramatic filters or cinematic effects
+
+This is a newly created image inspired by the references.`,
     requiresSecond: true,
   },
   {
     label: 'Hug Poco',
-    text: 'Create a moment where the person in the first photo and the person in the second photo hug and smile with both faces showing in wide angle.',
+    text: `
+make the image of the person in the first photo hug the second person from the second photo professionally and naturally, wide angle and portrait.
+
+Use the provided reference images as visual inspiration for the general look
+and style of the people, while creating a new, original image.
+
+Guidelines:
+- Both faces clearly visible
+- Natural expressions and relaxed body language
+- Realistic lighting and everyday photography style
+- Casual clothing
+- No dramatic filters or cinematic effects
+
+This is a newly created image inspired by the references.
+`,
     requiresSecond: true,
   },
   {
     label: 'Superhero intro',
-    text: 'Turn the person in the first photo into a glowing superhero, posing confidently as the camera moves in.',
+    text: `
+Create a natural-looking, wide-angle photo of two people hugging and smiling
+at the camera in a friendly, casual moment.
+
+Use the provided reference images as visual guidance for overall appearance
+and recognizable likeness. The generated people should resemble the individuals
+shown, while remaining a newly created image.
+
+Guidelines:
+- Both faces clearly visible
+- Consistent facial traits and hairstyles inspired by the references
+- Natural expressions and relaxed body language
+- Realistic lighting and everyday photography style
+- No heavy filters or dramatic stylization
+
+This is a recreation inspired by the reference images, not an exact copy.
+`,
     requiresSecond: false,
   },
   {
     label: 'Friends selfie (2 photos)',
-    text: 'Make it look like the person in the first photo and the person in the second photo are taking a fun selfie together and celebrating.',
+    text: `
+Create a casual selfie-style image of two people celebrating together.
+
+Use the provided reference images as visual guidance so the generated people
+closely resemble the individuals shown, while remaining a new image.
+
+Guidelines:
+- Smartphone selfie perspective
+- Natural expressions and lighting
+- Both faces clearly visible
+- No beautification filters
+`,
     requiresSecond: true,
   },
 ]
+
 
 // ✅ These MUST match your actual files in `public/source`
 const SECOND_PHOTO_OPTIONS: Record<string, SecondPhotoOption[]> = {
@@ -78,6 +135,34 @@ export default function Studio() {
   const [secondChoice, setSecondChoice] = useState<SecondPhotoOption | null>(
     null,
   )
+
+  async function uploadToS3(fileOrBlob: File | Blob, mimeType: string) {
+    // A. Get Signed URL
+    const signRes = await fetch(`${API}/upload-url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mime: mimeType }),
+    })
+
+    if (!signRes.ok) throw new Error('Failed to get upload URL')
+    const signed = await signRes.json()
+
+    const fd = new FormData()
+    Object.entries(signed.fields).forEach(([k, v]) =>
+      fd.append(k, String(v)),
+    )
+    fd.append('Content-Type', mimeType)
+    fd.append('file', fileOrBlob)
+
+    const uploadRes = await fetch(signed.url, {
+      method: 'POST',
+      body: fd,
+    })
+
+    if (!uploadRes.ok) throw new Error('Failed to upload to S3')
+
+    return signed.bucketKey as string
+  }
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -115,6 +200,7 @@ export default function Studio() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mime: primaryFile.type }),
       })
+      
 
       let primarySigned: any
       try {
@@ -159,18 +245,47 @@ export default function Studio() {
       }
 
       // 2) Build job payload
-      const payload: any = {
-        bucketKey: primarySigned.bucketKey,
-        prompt: prompt.trim(),
-        promptPreset: preset || undefined,
-        aspect: aspect || '16:9',
-        durationSec,
-      }
+      let secondaryKey: string | undefined
 
       // 👉 This is where Photo 2 is wired to the actual public folder image
       if (secondChoice && selectedPrompt?.requiresSecond) {
-        // e.g. "/source/Ruger.jpeg" or "/source/Poco.jpeg"
-        payload.secondaryPublicPath = secondChoice.publicPath
+        console.log('[Studio] Uploading preset image:', secondChoice.publicPath)
+
+        try {
+        const res = await fetch(secondChoice.publicPath)
+        if (!res.ok) {
+            throw new Error(`Failed to fetch preset image: ${res.status} ${res.statusText}`)
+          }
+
+          const contentType = res.headers.get('content-type') || ''
+          console.log('[Studio] Preset image Content-Type:', contentType)
+
+          if (!contentType.startsWith('image/')) {
+            const text = await res.text()
+            console.error('[Studio] ERROR: Not an image!', text.slice(0, 200))
+            throw new Error(`Preset image URL returned ${contentType}, not an image`)
+          }
+
+        const blob = await res.blob()
+        console.log('[Studio] Preset image blob size:', blob.size, 'type:', blob.type)
+        
+        // Upload it to S3
+        secondaryKey = await uploadToS3(blob, blob.type || 'image/jpeg')
+        console.log('[Studio] Preset image uploaded to S3:', secondaryKey)
+        } catch (err: any) {
+          console.error('[Studio] Failed to upload preset image:', err)
+          alert(`Failed to upload preset image (${secondChoice.label}): ${err?.message || 'Unknown error'}`)
+          throw err
+        }
+      }
+
+      const payload: any = {
+        bucketKey: primarySigned.bucketKey,          // The main user image
+        secondaryBucketKey: secondaryKey, // The uploaded preset image (Ruger/Poco)
+        prompt: prompt.trim(),
+        promptPreset: String(formData.get('preset') || ''),
+        aspect: String(formData.get('aspect') || '16:9'),
+        durationSec: Number(formData.get('duration') || 8),
       }
 
       const created = await fetch(`${API}/jobs`, {
@@ -182,396 +297,259 @@ export default function Studio() {
       setJobId(created.jobId)
     } catch (err: any) {
       console.error('[Studio] submit error', err)
-      alert(err?.message || 'Something went wrong while starting the job')
+      alert(err?.message || 'Something went wrong')
     } finally {
       setLoading(false)
     }
   }
+  //       // e.g. "/source/Ruger.jpeg" or "/source/Poco.jpeg"
+  //       payload.secondaryPublicPath = secondChoice.publicPath
+  //     }
 
-  useEffect(() => {
-    if (!jobId) return
-    const t = setInterval(async () => {
-      const j: Job = await fetch(`${API}/jobs/${jobId}`).then((r) => r.json())
-      setJob(j)
-      if (j.status === 'COMPLETE' || j.status === 'FAILED') clearInterval(t)
-    }, 2500)
-    return () => clearInterval(t)
-  }, [jobId])
+  //     const created = await fetch(`${API}/jobs`, {
+  //       method: 'POST',
+  //       headers: { 'Content-Type': 'application/json' },
+  //       body: JSON.stringify(payload),
+  //     }).then((r) => r.json())
+
+  //     setJobId(created.jobId)
+  //   } catch (err: any) {
+  //     console.error('[Studio] submit error', err)
+  //     alert(err?.message || 'Something went wrong while starting the job')
+  //   } finally {
+  //     setLoading(false)
+  //   }
+  // }
+
+useEffect(() => {
+  if (!jobId) return;
+
+  const t = setInterval(async () => {
+    try {
+      const res = await fetch(`${API}/jobs/${jobId}`);
+      if (!res.ok) return;
+      
+      const j: Job = await res.json();
+      setJob(j);
+
+      // Match the status your worker actually sends (usually COMPLETED)
+      if (j.status === 'COMPLETED' || j.status === 'FAILED') {
+        clearInterval(t);
+      }
+    } catch (err) {
+      console.error("Polling error:", err);
+    }
+  }, 3000);
+
+  return () => clearInterval(t);
+}, [jobId]);
 
   const currentSecondOptions: SecondPhotoOption[] =
     selectedPrompt ? SECOND_PHOTO_OPTIONS[selectedPrompt.label] ?? [] : []
 
-  return (
-    <div
-      style={{
-        minHeight: '100vh',
-        padding: 24,
-        // Funky colourful background + Immersia logo ghosted in
-        backgroundImage:
-          'radial-gradient(circle at top left, #06b6d4 0, transparent 55%), ' +
-          'radial-gradient(circle at bottom right, #f97316 0, transparent 55%), ' +
-          'url("/immersia-logo.png")',
-        backgroundSize: 'cover, cover, 420px',
-        backgroundRepeat: 'no-repeat, no-repeat, no-repeat',
-        backgroundPosition: 'top left, bottom right, center',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'flex-start',
-        boxSizing: 'border-box',
-      }}
-    >
-      <div
-        style={{
-          width: '100%',
-          maxWidth: 720,
-          borderRadius: 24,
-          padding: 20,
-          background:
-            'linear-gradient(135deg, rgba(192, 201, 221, 0.92), rgba(211, 240, 48, 0.88))',
-          border: '1px solid rgba(125, 218, 18, 0.4)',
-          boxShadow:
-            '0 20px 45px rgba(151, 207, 45, 0.9), 0 0 0 1px rgba(163, 161, 36, 0.8)',
-          color: '#c51f1fff',
-          backdropFilter: 'blur(18px)',
-        }}
-      >
-        {/* Header / branding */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 16,
-          }}
-        >
-          <div>
-            <h1
-              style={{
-                fontSize: 24,
-                fontWeight: 800,
-                letterSpacing: 0.04,
-              }}
-            >
-              Immersia AI Booth
-            </h1>
-            <p style={{ fontSize: 12, color: '#e5e7eb' }}>
-              Drop your photo, pick a vibe, and let Immersia do the magic ✨
-            </p>
+  
+    return (
+  <div style={{
+    minHeight: '100vh',
+    padding: '40px 20px',
+    backgroundColor: '#0f172a',
+    backgroundImage: `
+      radial-gradient(circle at 0% 0%, rgba(6, 182, 212, 0.15) 0, transparent 50%),
+      radial-gradient(circle at 100% 100%, rgba(168, 85, 247, 0.15) 0, transparent 50%)
+    `,
+    display: 'flex',
+    justifyContent: 'center',
+    fontFamily: 'Inter, system-ui, sans-serif'
+  }}>
+    <div style={{
+      width: '100%',
+      maxWidth: '640px',
+      backgroundColor: 'rgba(30, 41, 59, 0.7)',
+      backdropFilter: 'blur(20px)',
+      borderRadius: '24px',
+      border: '1px solid rgba(255, 255, 255, 0.1)',
+      padding: '32px',
+      boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+      color: '#f8fafc'
+    }}>
+      
+      {/* Header */}
+      <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+        <h1 style={{ fontSize: '28px', fontWeight: 800, marginBottom: '8px', background: 'linear-gradient(to right, #22d3ee, #34d399)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+          Immersia AI Studio
+        </h1>
+        <p style={{ color: '#94a3b8', fontSize: '14px' }}>Transform your photos into cinematic moments</p>
+      </div>
+
+      <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        
+        {/* Upload Section */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div style={{ background: 'rgba(15, 23, 42, 0.5)', padding: '16px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#38bdf8', marginBottom: '8px', fontWeight: 600 }}>PRIMARY PHOTO</label>
+            <Uploader onPick={setPrimaryFile} />
           </div>
-          <img
-            src="/immersia-logo.png"
-            alt="Immersia logo"
-            style={{
-              width: 56,
-              height: 56,
-              objectFit: 'contain',
-              filter: 'drop-shadow(0 0 10px rgba(59,130,246,0.7))',
-            }}
-          />
+
+          <div style={{ background: 'rgba(15, 23, 42, 0.5)', padding: '16px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: '#fb7185', marginBottom: '8px', fontWeight: 600 }}>GUEST STAR</label>
+            {currentSecondOptions.length > 0 ? (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {currentSecondOptions.map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setSecondChoice(opt)}
+                    style={{
+                      flex: 1,
+                      padding: '8px',
+                      borderRadius: '12px',
+                      border: secondChoice?.id === opt.id ? '2px solid #38bdf8' : '1px solid transparent',
+                      background: '#1e293b',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <img src={opt.publicPath} style={{ width: '100%', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />
+                    <span style={{ fontSize: '10px', color: '#fff' }}>{opt.label}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: '11px', color: '#64748b', textAlign: 'center', paddingTop: '10px' }}>Select a "2 photo" vibe below</div>
+            )}
+          </div>
         </div>
 
-        <form onSubmit={onSubmit} style={{ display: 'grid', gap: 14 }}>
-          {/* Two image slots */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 12,
-            }}
-          >
-            <div
-              style={{
-                padding: 10,
-                borderRadius: 16,
-                border: '1px dashed rgba(148,163,184,0.6)',
-                background:
-                  'linear-gradient(145deg, rgba(170, 196, 22, 0.9), rgba(223, 219, 14, 0.9))',
-              }}
-            >
-              <p style={{ marginBottom: 4, fontSize: 11, color: '#a5b4fc' }}>
-                Photo 1 (main) – required
-              </p>
-              <Uploader onPick={setPrimaryFile} />
-            </div>
-
-            <div
-              style={{
-                padding: 10,
-                borderRadius: 16,
-                border: '1px dashed rgba(148,163,184,0.5)',
-                background:
-                  'linear-gradient(145deg, rgba(218, 162, 11, 0.9), rgba(53, 228, 10, 0.75))',
-              }}
-            >
-              <p style={{ marginBottom: 4, fontSize: 11, color: '#f9a8d4' }}>
-                Photo 2 – auto (Ruger or Poco)
-              </p>
-
-              {currentSecondOptions.length > 0 ? (
-                <div
-                  style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 8,
-                    marginBottom: 8,
-                  }}
-                >
-                  {currentSecondOptions.map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setSecondChoice(opt)}
-                      style={{
-                        padding: '6px 10px',
-                        borderRadius: 999,
-                        border:
-                          secondChoice?.id === opt.id
-                            ? '1px solid #f97316'
-                            : '1px solid rgba(148,163,184,0.7)',
-                        background:
-                          secondChoice?.id === opt.id
-                            ? 'linear-gradient(135deg, #f97316, #a855f7)'
-                            : 'rgba(15,23,42,0.9)',
-                        color: '#f9fafb',
-                        fontSize: 11,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        boxShadow:
-                          secondChoice?.id === opt.id
-                            ? '0 0 14px rgba(249,115,22,0.7)'
-                            : 'none',
-                        transition: 'transform 0.12s ease, box-shadow 0.12s ease',
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: 18,
-                          height: 18,
-                          borderRadius: '999px',
-                          overflow: 'hidden',
-                          border: '1px solid rgba(15,23,42,0.8)',
-                          background: '#db680aff',
-                        }}
-                      >
-                        {/* tiny preview circle */}
-                        <img
-                          src={opt.publicPath}
-                          alt={opt.label}
-                          style={{
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'cover',
-                          }}
-                        />
-                      </span>
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p style={{ fontSize: 11, color: '#e5e7eb' }}>
-                  Pick <strong>Hug Ruger</strong> or <strong>Hug Poco</strong>{' '}
-                  below to plug in their photo automatically.
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Default prompt chips */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {/* Prompt Chips */}
+        <div>
+          <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '12px' }}>CHOOSE A VIBE</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             {DEFAULT_PROMPTS.map((p) => (
               <button
                 key={p.label}
                 type="button"
                 onClick={() => {
-                  setPrompt(p.text)
-                  setSelectedPrompt(p)
-                  const opts = SECOND_PHOTO_OPTIONS[p.label]
-                  setSecondChoice(opts?.[0] ?? null)
+                  setPrompt(p.text);
+                  setSelectedPrompt(p);
+                  setSecondChoice(SECOND_PHOTO_OPTIONS[p.label]?.[0] ?? null);
                 }}
                 style={{
-                  padding: '6px 10px',
-                  borderRadius: 999,
-                  border:
-                    selectedPrompt?.label === p.label
-                      ? '1px solid #22c55e'
-                      : '1px solid rgba(148,163,184,0.7)',
-                  background:
-                    selectedPrompt?.label === p.label
-                      ? 'linear-gradient(135deg, #22c55e, #22d3ee)'
-                      : 'rgba(9, 233, 39, 0.9)',
-                  color: '#f9fafb',
-                  fontSize: 12,
+                  padding: '8px 16px',
+                  borderRadius: '99px',
+                  fontSize: '13px',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: selectedPrompt?.label === p.label ? '#38bdf8' : 'rgba(255,255,255,0.05)',
+                  color: selectedPrompt?.label === p.label ? '#0f172a' : '#f8fafc',
                   cursor: 'pointer',
-                  boxShadow:
-                    selectedPrompt?.label === p.label
-                      ? '0 0 12px rgba(45,212,191,0.7)'
-                      : 'none',
-                  transition: 'transform 0.12s ease, box-shadow 0.12s ease',
+                  fontWeight: 600
                 }}
               >
                 {p.label}
-                {p.requiresSecond && ' • 2 photos'}
               </button>
             ))}
           </div>
+        </div>
 
-          <input
-            name="prompt"
-            placeholder="Describe your animation..."
-            required
-            value={prompt}
-            onChange={(e) => {
-              setPrompt(e.target.value)
-              setSelectedPrompt(null)
-              setSecondChoice(null)
-            }}
-            style={{
-              padding: 10,
-              borderRadius: 10,
-              border: '1px solid rgba(148,163,184,0.8)',
-              background: 'rgba(14, 241, 44, 0.9)',
-              color: '#f9fafb',
-              fontSize: 13,
-              outline: 'none',
-            }}
-          />
+        {/* Input Area */}
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="Refine your prompt here..."
+          style={{
+            width: '100%',
+            padding: '16px',
+            borderRadius: '16px',
+            background: 'rgba(15, 23, 42, 0.5)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            color: '#fff',
+            minHeight: '80px',
+            outline: 'none',
+            fontSize: '14px'
+          }}
+        />
 
-          <div
-            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}
-          >
-            <select
-              name="preset"
-              style={{
-                padding: 8,
-                borderRadius: 10,
-                border: '1px solid rgba(148,163,184,0.8)',
-                background: 'rgba(14, 241, 44, 0.9)',
-                color: '#e5e7eb',
-                fontSize: 12,
-              }}
-            >
-              <option value="">Style preset (optional)</option>
-              <option>Energetic party trailer</option>
-              <option>Friendly selfie animation</option>
-              <option>Epic cinematic intro</option>
-            </select>
-            <input
-              name="aspect"
-              placeholder="16:9"
-              defaultValue="16:9"
-              style={{
-                padding: 8,
-                borderRadius: 10,
-                border: '1px solid rgba(148,163,184,0.8)',
-                background: 'rgba(14, 241, 44, 0.9)',
-                color: '#e5e7eb',
-                fontSize: 12,
-              }}
-            />
+        <button
+          type="submit"
+          disabled={loading}
+          style={{
+            padding: '16px',
+            borderRadius: '16px',
+            background: 'linear-gradient(to right, #06b6d4, #10b981)',
+            color: '#0f172a',
+            fontWeight: 800,
+            border: 'none',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            fontSize: '16px',
+            boxShadow: '0 10px 15px -3px rgba(6, 182, 212, 0.3)'
+          }}
+        >
+          {loading ? 'UPLOADING...' : 'GENERATE ANIMATION'}
+        </button>
+      </form>
+
+      {/* Progress & Result */}
+      {job && (
+        <div style={{
+          marginTop: '32px',
+          padding: '24px',
+          background: 'rgba(15, 23, 42, 0.8)',
+          borderRadius: '20px',
+          border: '1px solid rgba(56, 189, 248, 0.3)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <span style={{ fontSize: '12px', color: '#38bdf8' }}>JOB ID: {job.id.slice(-6)}</span>
+            <span style={{ fontSize: '12px', padding: '4px 12px', background: '#334155', borderRadius: '99px' }}>{job.status}</span>
           </div>
+          
+          <Progress stage={job.stage} />
 
-          <div>
-            <label
-              style={{ fontSize: 11, color: '#c4b5fd', marginBottom: 4 }}
-            >
-              Duration (seconds)
-            </label>
-            <input
-              name="duration"
-              type="number"
-              min={3}
-              max={20}
-              defaultValue={5}
-              style={{
-                width: '100%',
-                marginTop: 4,
-                padding: 8,
-                borderRadius: 10,
-                border: '1px solid rgba(148,163,184,0.8)',
-                background: 'rgba(14, 241, 44, 0.9)',
-                color: '#f9fafb',
-                fontSize: 12,
-              }}
-            />
-          </div>
+          {job.resultUrl && (
+            <div style={{ marginTop: '20px' }}>
+              <video src={job.resultUrl} controls autoPlay style={{ width: '100%', borderRadius: '12px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)' }} />
+              <a href={job.resultUrl} download style={{ display: 'block', textAlign: 'center', marginTop: '16px', color: '#38bdf8', fontSize: '14px', textDecoration: 'none' }}>
+                Download Video ↓
+              </a>
+              {job && job.status === 'COMPLETED' && (
+  <div style={{ marginTop: 24 }}>
+    <h3>Share your video</h3>
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              marginTop: 4,
-              padding: '10px 14px',
-              borderRadius: 999,
-              background: loading
-                ? 'linear-gradient(135deg, #0f172a, #1e293b)'
-                : 'linear-gradient(135deg, #22c55e, #06b6d4)',
-              color: '#020617',
-              fontWeight: 800,
-              fontSize: 13,
-              letterSpacing: 0.04,
-              opacity: loading ? 0.7 : 1,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              border: 'none',
-              boxShadow: loading
-                ? 'none'
-                : '0 12px 25px rgba(34,197,94,0.45)',
-              transform: loading ? 'none' : 'translateY(0)',
-              transition: 'box-shadow 0.12s ease, transform 0.12s ease',
-            }}
-          >
-            {loading ? 'Cooking your vibe… 🔄' : 'Generate with Immersia 🚀'}
-          </button>
-        </form>
+    <img
+      src={`${API}/jobs/${job.id}/qr`}
+      alt="QR Code"
+      style={{ width: 200 }}
+    />
 
-        {job && (
-          <div
-            style={{
-              border: '1px solid rgba(148,163,184,0.7)',
-              borderRadius: 16,
-              padding: 16,
-              marginTop: 18,
-              background: 'rgba(14, 241, 44, 0.9)',
-            }}
-          >
-            <h3 style={{ fontWeight: 700, marginBottom: 4 }}>Job: {job.id}</h3>
-            <p style={{ fontSize: 12, color: '#e5e7eb' }}>
-              Status: <strong>{job.status}</strong>
-            </p>
-            <Progress stage={job.stage} />
-            {job.status === 'FAILED' && (
-              <p style={{ marginTop: 8, color: '#fca5a5', fontSize: 12 }}>
-                This request could not be completed (content rules or provider
-                error). Try a simpler, more generic prompt without real names.
-              </p>
-            )}
-            {job.resultUrl && (
-              <div style={{ marginTop: 12 }}>
-                <video
-                  src={job.resultUrl}
-                  controls
-                  style={{ width: '100%', borderRadius: 12 }}
-                />
-                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                  <a
-                    href={job.resultUrl}
-                    download
-                    style={{
-                      fontSize: 12,
-                      color: '#a5b4fc',
-                      textDecoration: 'underline',
-                    }}
-                  >
-                    Download
-                  </a>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault()
+        const form = e.currentTarget as HTMLFormElement
+        const email = (form.elements.namedItem('email') as HTMLInputElement).value
+
+        await fetch(`${API}/jobs/${job.id}/email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: email }),
+        })
+
+        alert('Email sent!')
+      }}
+    >
+      <input
+        name="email"
+        type="email"
+        placeholder="Enter email"
+        required
+        style={{ padding: 8, marginTop: 8 }}
+      />
+      <button type="submit">Send Email</button>
+    </form>
+  </div>
+)}
+            </div>
+          )}
+        </div>
+      )}
     </div>
+  </div>
   )
 }

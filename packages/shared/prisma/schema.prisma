@@ -24,6 +24,7 @@ enum JobStatus {
 enum JobStage {
   QUEUED
   GEMINI_PREP
+  IMAGE_GENERATE
   VIDEO_GENERATE
   TTS_GENERATE
   MUX
@@ -52,6 +53,7 @@ model Asset {
   sourceForJobs Job[] @relation("job_source_image")
   resultForJobs Job[] @relation("job_result_video")
   ttsForJobs    Job[] @relation("job_tts_audio")
+  Job           Job[]
 }
 
 model Job {
@@ -63,8 +65,10 @@ model Job {
   stage  JobStage  @default(QUEUED)
   error  String?
 
-  sourceImageId String
-  sourceImage   Asset  @relation("job_source_image", fields: [sourceImageId], references: [id])
+  sourceImageId    String
+  sourceImage      Asset   @relation("job_source_image", fields: [sourceImageId], references: [id])
+  secondaryImageId String?
+  secondaryImage   Asset?  @relation(fields: [secondaryImageId], references: [id])
 
   resultVideoId String?
   resultVideo   Asset?  @relation("job_result_video", fields: [resultVideoId], references: [id])

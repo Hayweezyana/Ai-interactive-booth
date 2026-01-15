@@ -10,7 +10,7 @@ credentials: { accessKeyId: env.S3_ACCESS_KEY_ID, secretAccessKey: env.S3_SECRET
 });
 
 
-export function storageKey(kind: 'uploads'|'intermediate'|'tts'|'final', name?: string) {
+export function storageKey(kind: 'vertex-gen'|'uploads'|'intermediate'|'tts'|'final', name?: string) {
 return `${kind}/${name || crypto.randomUUID()}`;
 }
 

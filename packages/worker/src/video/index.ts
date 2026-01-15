@@ -1,10 +1,10 @@
 import type { VideoProvider } from '@shared/video/provider'
-import { bananaProvider } from './bananaProvider'
+import { videoGen } from './bananaProvider'
 
 export function getVideoProvider(name?: string): VideoProvider {
   switch (name) {
     case 'banana':
     default:
-      return bananaProvider
+      return videoGen as unknown as VideoProvider
   }
 }

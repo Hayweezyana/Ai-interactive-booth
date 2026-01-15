@@ -19,7 +19,7 @@ new Worker(
       // 0) load job
       const job = await prisma.job.findUniqueOrThrow({
         where: { id: jobId },
-        include: { sourceImage: true },
+        include: { sourceImage: true, secondaryImage: true },
       })
 
       if (!job.sourceImage) {
@@ -27,9 +27,17 @@ new Worker(
       }
 
       const imageUrl = publicUrl(job.sourceImage.bucketKey)
-      log('imageUrl', imageUrl)
+      // const secondaryUrl = job.secondaryImageId ? publicUrl(job.secondaryImageId) : undefined
+      // log('imageUrl', imageUrl)
+      // log('secondaryUrl', secondaryUrl)
 
-      // quick sanity: this URL should be publicly readable in a browser now
+      const secondaryUrl = job.secondaryImage 
+        ? publicUrl(job.secondaryImage.bucketKey) 
+        : undefined
+
+      log('imageUrl', imageUrl)
+      log('secondaryUrl', secondaryUrl)
+
       await prisma.job.update({
         where: { id: jobId },
         data: { status: 'RUNNING', stage: 'GEMINI_PREP' },

@@ -41,12 +41,14 @@ type RunwayTaskStatus =
 export const videoGen: VideoGenerator = {
   async start({
     imageUrl,
+    secondaryImageUrl,
     prompt,
     aspect,
     durationSec,
     seed,
   }: {
     imageUrl: string
+    secondaryImageUrl?: string
     prompt: string
     aspect?: string
     durationSec?: number
@@ -56,8 +58,14 @@ export const videoGen: VideoGenerator = {
     const ratio = toRunwayRatio(aspect)
     const duration = durationSec ?? 5
 
+    console.log('[videoGen] STARTING RUNWAY JOB WITH:', {
+      image1: imageUrl,
+      image2: secondaryImageUrl
+    })
+
     const body = {
       promptImage: imageUrl,
+      secondaryImage: secondaryImageUrl ? secondaryImageUrl : undefined,
       promptText: prompt,
       model: RUNWAY_MODEL,
       ratio,

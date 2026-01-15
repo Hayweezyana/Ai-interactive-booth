@@ -1,144 +1,192 @@
-// packages/worker/src/index.ts
-import { Worker, JobsOptions } from 'bullmq'
-import { env } from '@shared/env'
+import path from 'path'
+import dotenv from 'dotenv'
+dotenv.config({ path: path.resolve(__dirname, '../../../../.env') })
+
+import { Worker } from 'bullmq'
+import Redis from 'ioredis'
 import { prisma } from '@shared/prisma'
 import { publicUrl } from '@shared/utils/storage'
-import { s3PutFromUrl } from './util/s3PutFromUrl'
-// import { muxAudioOverVideo } from '@shared/media/ffmpeg'
-// import { planFromImage } from './ai/gemini'
-// import { getVideoProvider } from './video'
-// import { s3PutFromUrl } from './util/s3PutFromUrl'
-// import { tts } from '../../api/src/providers/tts' // keep if you already implemented tts.synthesize()
+import { s3PutBuffer, s3PutFromUrl } from './util/s3PutFromUrl'
 import { videoGen } from './video/runway'
-// import { videoGen } from './video/lumaVideoGen'
-// import {videoGen} from './video/bananaProvider'
-import { gemini } from '../../api/src/providers/gemini'
 
+import {
+  hugPrompt,
+  selfiePrompt,
+  singlePersonPrompt
+} from './prompts/identityPrompts'
+
+import { generateWithFallback } from './util/generateLockedImage'
+import { env } from '@shared/env'
+
+const connection = new Redis(env.REDIS_URL, {
+  maxRetriesPerRequest: null,
+  keepAlive: 30000,
+  family: 4,
+})
 
 const log = (...args: any[]) => console.log('[worker]', ...args)
-console.log('[BANANA env]', {
-  api: (process.env.BANANA_API_KEY || '').slice(0,4) + '…',
-  model: (process.env.BANANA_MODEL_KEY || '').slice(0,4) + '…',
-})
+
+export async function fetchAsBase64(url: string): Promise<string> {
+  console.log('[fetchAsBase64] Fetching:', url)
+  
+  const response = await fetch(url)
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image from ${url}: ${response.status} ${response.statusText}`)
+  }
+  const contentType = response.headers.get('content-type') || ''
+  console.log('[fetchAsBase64] Content-Type:', contentType)
+  
+  if (!contentType.startsWith('image/')) {
+    const text = await response.text()
+    console.error('[fetchAsBase64] ERROR: Not an image! Content:', text.slice(0, 500))
+    throw new Error(`URL returned ${contentType}, not an image. Content starts with: ${text.slice(0, 100)}`)
+  }
+
+  const arrayBuffer = await response.arrayBuffer()
+  const buffer = Buffer.from(arrayBuffer)
+  
+  // Convert to base64 - this is the raw base64 without data URL prefix
+  const base64 = buffer.toString('base64')
+  
+  console.log('[fetchAsBase64] Success. Size:', buffer.length, 'bytes, Base64 length:', base64.length)
+  
+  // Verify it starts with valid image bytes
+  const firstBytes = buffer.slice(0, 4).toString('hex')
+  console.log('[fetchAsBase64] First bytes (hex):', firstBytes)
+  
+  // Check for valid image signatures
+  const isPNG = firstBytes.startsWith('89504e47')
+  const isJPEG = firstBytes.startsWith('ffd8')
+  const isGIF = firstBytes.startsWith('47494638')
+  const isWEBP = buffer.slice(8, 12).toString() === 'WEBP'
+  
+  if (!isPNG && !isJPEG && !isGIF && !isWEBP) {
+    throw new Error('Fetched data does not appear to be a valid image format!')
+  }
+  
+  console.log('[fetchAsBase64] Valid image format detected:', 
+    isPNG ? 'PNG' : isJPEG ? 'JPEG' : isGIF ? 'GIF' : 'WEBP')
+  
+  return base64
+}
 
 new Worker(
   'jobs',
   async (bullJob) => {
-    const { jobId } = bullJob.data as { jobId: string }
+    const { jobId } = bullJob.data
     log('processing', jobId)
 
-    try {
-      // 0) load job
-      const job = await prisma.job.findUniqueOrThrow({
-        where: { id: jobId },
-        include: { sourceImage: true },
-      })
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      include: { sourceImage: true, secondaryImage: true },
+    })
+    if (!job) throw new Error('Job not found')
 
-      if (!job.sourceImage) {
-        throw new Error('Job missing sourceImage')
+    try {
+      // 1️⃣ Load reference images
+      if (!job.sourceImage) throw new Error('Source image missing')
+      const primaryUrl = publicUrl(job.sourceImage.bucketKey)
+      const primaryBase64 = await fetchAsBase64(primaryUrl)
+
+      const base64Images = [primaryBase64]
+
+      if (job.secondaryImage) {
+        const secondaryUrl = publicUrl(job.secondaryImage.bucketKey)
+        base64Images.push(await fetchAsBase64(secondaryUrl))
       }
 
-      const imageUrl = publicUrl(job.sourceImage.bucketKey)
-      log('imageUrl', imageUrl)
+      // 2️⃣ Select prompt
+      let finalPrompt: string
 
-      // quick sanity: this URL should be publicly readable in a browser now
+      if (job.promptPreset?.includes('hug')) {
+        finalPrompt = hugPrompt(job.prompt)
+      } else if (job.promptPreset?.includes('selfie')) {
+        finalPrompt = selfiePrompt(job.prompt)
+      } else {
+        finalPrompt = singlePersonPrompt(job.prompt)
+      }
+
+      // 3️⃣ Generate face-locked image
+      await prisma.job.update({ where: { id: jobId }, data: { stage: 'IMAGE_GENERATE' } })
+
+      const imageBase64 = await generateWithFallback(finalPrompt, base64Images)
+      const imageBuffer = Buffer.from(imageBase64, 'base64')
+
+      const imageKey = await s3PutBuffer(imageBuffer, 'openai-gen', 'image/png')
+      const imageUrl = publicUrl(imageKey)
+
+      // 4️⃣ Runway Gen-4 video
+      await prisma.job.update({ where: { id: jobId }, data: { stage: 'VIDEO_GENERATE' } })
+
+      const vstart = await videoGen.start({
+        imageUrl,
+        prompt: `
+Preserve facial identity exactly.
+No morphing.
+No face drift.
+
+${job.prompt}
+`,
+        durationSec: job.durationSec,
+        aspect: job.aspect,
+      })
+
+      let result
+      for (let i = 0; i < 60; i++) {
+        result = await videoGen.getStatus(vstart.jobId)
+        if (result.state === 'complete') break
+        if (result.state === 'failed') throw new Error(result.error)
+        await new Promise(r => setTimeout(r, 4000))
+      }
+
+      if (!result?.videoUrl) throw new Error('Runway timeout')
+
+      // 5️⃣ Save final video
+      const finalKey = await s3PutFromUrl(result.videoUrl, 'final', 'video/mp4')
+
+      const asset = await prisma.asset.create({
+        data: { kind: 'FINAL_VIDEO', bucketKey: finalKey, mime: 'video/mp4' }
+      })
+
       await prisma.job.update({
         where: { id: jobId },
-        data: { status: 'RUNNING', stage: 'GEMINI_PREP' },
+        data: {
+          status: 'COMPLETE',
+          stage: 'COMPLETE',
+          resultVideoId: asset.id,
+        }
       })
 
-      // 1) GEMINI_PREP
-      log('GEMINI_PREP: calling gemini.describe')
-      const prep = await gemini.describe({
-        imageUrl,
-        userPrompt: job.prompt,
+      log('completed', jobId)
+
+      const existingShare = await prisma.share.findFirst({
+        where: { jobId }
       })
-      log('GEMINI_PREP: got response', prep)
 
-      // 2) VIDEO_GENERATE
-      await prisma.job.update({
-  where: { id: jobId },
-  data: { stage: 'VIDEO_GENERATE' },
-})
+      if (!existingShare) {
+        await prisma.share.create({
+          data: {
+            jobId,
+            slug: Math.random().toString(36).slice(2, 10),
+          },
+        })
+      }
 
-log('VIDEO_GENERATE: starting videoGen')
-const vstart = await videoGen.start({
-  imageUrl: publicUrl(job.sourceImage.bucketKey),
-  prompt: prep.refinedPrompt,
-  aspect: job.aspect,
-  durationSec: job.durationSec,
-  styleHints: job.styleHints,
-})
-log('VIDEO_GENERATE: start response', vstart)
-
-let vres: any
-let polls = 0
-const maxPolls = 30
-
-while (true) {
-  polls++
-  vres = await videoGen.getStatus(vstart.jobId)
-  log('VIDEO_GENERATE: poll', polls, vres)
-
-  if (vres.state === 'failed') {
-    console.error('[worker][VIDEO_GENERATE] video provider failed:', vres)
-    throw new Error(vres.error || 'video failed')
-  }
-
-  if (vres.state === 'complete') {
-    break
-  }
-
-  if (polls >= maxPolls) {
-    throw new Error('video generation timed out (never reached complete/failed)')
-  }
-
-  await new Promise((r) => setTimeout(r, 4000))
-}
-const finalUrl = vres.videoUrl!
-console.log('[worker] VIDEO_GENERATE: got final runway url', finalUrl)
-
-// Optional: update stage to something like "MUX" or go straight to COMPLETE.
-// I’ll just skip straight to COMPLETE for clarity.
-const finalKey = await s3PutFromUrl(finalUrl, 'final', 'video/mp4')
-
-const finalAsset = await prisma.asset.create({
-  data: {
-    kind: 'FINAL_VIDEO',
-    bucketKey: finalKey,
-    mime: 'video/mp4',
-  },
-})
-
-await prisma.job.update({
-  where: { id: jobId },
-  data: {
-    status: 'COMPLETE',
-    stage: 'COMPLETE',
-    resultVideoId: finalAsset.id,
-  },
-})
-
-log('completed', jobId)
 
     } catch (err) {
       console.error('[worker ERROR]', err)
-
-      // Mark job as FAILED so UI doesn’t stay stuck on GEMINI_PREP
-      try {
-        await prisma.job.update({
-          where: { id: (bullJob.data as { jobId: string }).jobId },
-          data: { status: 'FAILED' },
-        })
-      } catch (e) {
-        console.error('[worker ERROR] failed to mark job as FAILED:', e)
-      }
-
+      await prisma.job.update({ where: { id: jobId }, data: { status: 'FAILED' } })
       throw err
     }
   },
   {
-    connection: { url: env.REDIS_URL },
+    connection,
     concurrency: 2,
+    removeOnComplete: { count: 100 },
+    removeOnFail: { count: 500 },
   }
 )
+
+log('worker online')
+
