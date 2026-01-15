@@ -4,21 +4,20 @@ import cors from 'cors';
 import morgan from 'morgan';
 import { router } from './routes';
 
-// console.log('[AWS env]', {
-//   id: process.env.S3_ACCESS_KEY_ID,
-//   region: process.env.S3_REGION || process.env.AWS_REGION,
-//   bucket: process.env.S3_BUCKET
-// })
-
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use(morgan('dev'));
+
+// Add root redirect to /studio
+app.get('/', (_req: Request, res: Response) => {
+  res.redirect('/studio');
+});
+
 app.use('/api', router);
 app.get('/health', (_req: Request, res: Response) => res.json({ message: 'API is running 🚀' }));
-const port = process.env.PORT || 4000;
-app.listen(port, () => console.log(`API listening on http://localhost:${port}`));
 
+// Error handler should be AFTER routes
 app.use((err: any, _req: any, res: any, _next: any) => {
   console.error('[unhandled]', err)
   res.status(500).json({
@@ -26,3 +25,11 @@ app.use((err: any, _req: any, res: any, _next: any) => {
     message: err?.message || 'Unexpected error',
   })
 })
+
+const port = Number(process.env.PORT) || 4000;
+
+// ⚠️ CRITICAL: Bind to 0.0.0.0 for Railway/cloud platforms
+app.listen(port, '0.0.0.0', () => {
+  console.log(`API listening on port ${port}`);
+  console.log(`Health check: http://0.0.0.0:${port}/health`);
+});
