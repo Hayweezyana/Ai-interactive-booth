@@ -25,7 +25,7 @@ export async function sendEmail(
   html: string
 ) {
   if (env.EMAIL_PROVIDER !== 'smtp') {
-    console.log(`[EMAIL MOCK] to=${to} subject=${subject}`)
+    console.log(`[Immersia ai booth] to=${to} subject=${subject}`)
     return
   }
 
