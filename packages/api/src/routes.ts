@@ -124,9 +124,14 @@ router.post('/jobs', async (req, res, next) => {
       jobData.secondaryImage = { connect: { id: secondaryImage.id } }
     }
 
-    const job = await prisma.job.create({
-      data: jobData,
-    })
+    const job = await prisma.job.create({ data: jobData })
+
+await prisma.share.create({
+  data: {
+    jobId: job.id,
+    slug: Math.random().toString(36).slice(2, 10),
+  },
+})
 
     await enqueueJob(job.id)
 
@@ -254,3 +259,9 @@ router.get('/v/:slug', async (req, res, next) => {
     next(e)
   }
 })
+
+router.get('/debug/shares', async (_req, res) => {
+  const shares = await prisma.share.findMany()
+  res.json(shares)
+})
+

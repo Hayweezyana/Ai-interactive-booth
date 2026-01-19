@@ -43,4 +43,6 @@ export async function sendEmail(
     subject,
     messageId: info.messageId,
   })
+  await transporter.verify()
+console.log('SMTP VERIFIED')
 }

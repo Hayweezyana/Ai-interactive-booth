@@ -160,18 +160,18 @@ ${job.prompt}
 
       log('completed', jobId)
 
-      const existingShare = await prisma.share.findFirst({
-        where: { jobId }
-      })
+      // const existingShare = await prisma.share.findFirst({
+      //   where: { jobId }
+      // })
 
-      if (!existingShare) {
-        await prisma.share.create({
-          data: {
-            jobId,
-            slug: Math.random().toString(36).slice(2, 10),
-          },
-        })
-      }
+      // if (!existingShare) {
+      //   await prisma.share.create({
+      //     data: {
+      //       jobId,
+      //       slug: Math.random().toString(36).slice(2, 10),
+      //     },
+      //   })
+      // }
 
 
     } catch (err) {
