@@ -117,8 +117,12 @@ exports.router.post('/jobs', async (req, res, next) => {
         if (secondaryImage) {
             jobData.secondaryImage = { connect: { id: secondaryImage.id } };
         }
-        const job = await prisma_1.prisma.job.create({
-            data: jobData,
+        const job = await prisma_1.prisma.job.create({ data: jobData });
+        await prisma_1.prisma.share.create({
+            data: {
+                jobId: job.id,
+                slug: Math.random().toString(36).slice(2, 10),
+            },
         });
         await (0, enqueue_1.enqueueJob)(job.id);
         return res.json({ jobId: job.id });
@@ -136,28 +140,16 @@ exports.router.get('/jobs/:id', async (req, res, next) => {
         // load job with relations that exist on the generated client (resultVideo + sourceImage)
         const job = await prisma_1.prisma.job.findUnique({
             where: { id: req.params.id },
-            include: { resultVideo: true, sourceImage: true },
+            include: { resultVideo: true, sourceImage: true, shares: true, },
         });
         if (!job)
             return res.status(404).end();
-        const resultUrl = job.resultVideo ? (0, storage_1.publicUrl)(job.resultVideo.bucketKey) : undefined;
-        const sourceImageUrl = job.sourceImage ? (0, storage_1.publicUrl)(job.sourceImage.bucketKey) : undefined;
-        // secondary image relation may not be present on the generated client types,
-        // so load it explicitly if the job has a secondaryImageId scalar field.
-        let secondaryImageUrl = undefined;
-        // use any/ts-ignore to avoid type errors if the scalar field isn't present in types
-        // @ts-ignore
-        const secondaryId = job.secondaryImageId;
-        if (secondaryId) {
-            const secondary = await prisma_1.prisma.asset.findUnique({ where: { id: secondaryId } });
-            if (secondary)
-                secondaryImageUrl = (0, storage_1.publicUrl)(secondary.bucketKey);
-        }
         res.json({
             ...job,
-            resultUrl,
-            sourceImageUrl,
-            secondaryImageUrl,
+            resultUrl: job.resultVideo ? (0, storage_1.publicUrl)(job.resultVideo.bucketKey) : undefined,
+            shareUrl: job.shares?.[0]
+                ? `${process.env.APP_ORIGIN}/v/${job.shares[0].slug}`
+                : undefined,
         });
     }
     catch (e) {
@@ -168,63 +160,119 @@ exports.router.get('/jobs/:id', async (req, res, next) => {
  * POST /jobs/:id/email
  * Send generated video via email.
  */
+// In your routes.ts - UPDATE the email route
 exports.router.post('/jobs/:id/email', async (req, res, next) => {
     try {
         const schema = zod_1.z.object({ to: zod_1.z.string().email() });
         const { to } = schema.parse(req.body);
         const job = await prisma_1.prisma.job.findUnique({
             where: { id: req.params.id },
-            include: { resultVideo: true },
+            include: {
+                resultVideo: true,
+                shares: true
+            },
         });
-        if (!job || !job.resultVideo)
+        if (!job || !job.resultVideo) {
             return res.status(400).json({ error: 'No result yet' });
-        const url = (0, storage_1.publicUrl)(job.resultVideo.bucketKey);
-        await (0, email_1.sendEmail)(to, 'Your video is ready 🎉', `
-    <p>Your video is ready:</p>
-    <p><a href="${url}">Watch / Download Video</a></p>
-    <p>You can also scan the QR code on the screen to access it.</p>
-  `);
-        res.json({ ok: true });
+        }
+        // Get the video URL
+        const videoUrl = (0, storage_1.publicUrl)(job.resultVideo.bucketKey);
+        // Get the share URL (preferred for tracking and better UX)
+        const shareUrl = job.shares?.[0]
+            ? `${process.env.APP_ORIGIN}/v/${job.shares[0].slug}`
+            : undefined;
+        console.log('[email] Sending video email:', {
+            to,
+            videoUrl: videoUrl.substring(0, 50) + '...',
+            shareUrl,
+        });
+        // Use the template
+        const htmlContent = (0, email_1.getVideoEmailTemplate)(videoUrl, shareUrl);
+        await (0, email_1.sendEmail)(to, 'Your Immersia AI Video is Ready! 🎬', htmlContent);
+        console.log('[email] Email sent successfully to:', to);
+        res.json({
+            ok: true,
+            message: 'Email sent successfully'
+        });
     }
     catch (e) {
-        next(e);
+        console.error('[email] Error:', e);
+        res.status(500).json({
+            error: 'Failed to send email',
+            message: e.message
+        });
     }
 });
 /**
  * GET /jobs/:id/qr
  * Create or fetch share record and return QR PNG
  */
+/**
+ * GET /jobs/:id/qr
+ * Return QR PNG for existing share
+ */
 exports.router.get('/jobs/:id/qr', async (req, res, next) => {
     try {
-        const jobId = req.params.id;
-        let share = await prisma_1.prisma.share.findFirst({ where: { jobId } });
+        if (!process.env.APP_ORIGIN) {
+            throw new Error('APP_ORIGIN not set');
+        }
+        const share = await prisma_1.prisma.share.findFirst({
+            where: { jobId: req.params.id },
+        });
         if (!share) {
-            const slug = Math.random().toString(36).slice(2, 10);
-            share = await prisma_1.prisma.share.create({
-                data: { jobId, slug },
-            });
+            return res.status(404).json({ error: 'Share not ready yet' });
         }
         const png = await (0, qr_1.generateQR)(`${process.env.APP_ORIGIN}/v/${share.slug}`);
-        res.setHeader('Content-Type', 'image/png').send(png);
+        res.setHeader('Content-Type', 'image/png');
+        res.send(png);
     }
     catch (e) {
         next(e);
     }
 });
-exports.router.get('/share/:slug', async (req, res, next) => {
+exports.router.get('/v/:slug', async (req, res, next) => {
     try {
         const share = await prisma_1.prisma.share.findUnique({
             where: { slug: req.params.slug },
-            include: { job: { include: { resultVideo: true } } },
+            include: {
+                job: {
+                    include: { resultVideo: true },
+                },
+            },
         });
-        if (!share?.job?.resultVideo) {
-            return res.status(404).json({ error: 'Not found' });
+        if (!share) {
+            return res.status(404).send('Invalid link');
         }
-        res.json({
-            url: (0, storage_1.publicUrl)(share.job.resultVideo.bucketKey),
-        });
+        if (!share.job.resultVideo) {
+            return res
+                .status(200)
+                .send('Your video is still processing. Please refresh shortly.');
+        }
+        const url = (0, storage_1.publicUrl)(share.job.resultVideo.bucketKey);
+        return res.redirect(url);
     }
     catch (e) {
         next(e);
     }
+});
+exports.router.get('/debug/shares', async (_req, res) => {
+    const shares = await prisma_1.prisma.share.findMany();
+    res.json(shares);
+});
+exports.router.get('/debug/share/:slug', async (req, res) => {
+    const share = await prisma_1.prisma.share.findUnique({
+        where: { slug: req.params.slug },
+        include: {
+            job: {
+                include: { resultVideo: true },
+            },
+        },
+    });
+    res.json({
+        found: !!share,
+        share,
+        jobId: share?.jobId,
+        resultVideoId: share?.job?.resultVideoId,
+        hasResultVideo: !!share?.job?.resultVideo,
+    });
 });

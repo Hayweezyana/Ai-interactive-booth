@@ -40,7 +40,7 @@ exports.s3PutBuffer = s3PutBuffer;
 //   await persistBuffer(key, buffer, mime)
 //   return key
 // }
-const storage_1 = require("@shared/utils/storage");
+const storage_1 = require("@app/shared/utils/storage");
 /**
  * Upload a remote URL directly into S3
  */

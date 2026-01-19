@@ -130,17 +130,17 @@ ${job.prompt}
             }
         });
         log('completed', jobId);
-        const existingShare = await prisma_1.prisma.share.findFirst({
-            where: { jobId }
-        });
-        if (!existingShare) {
-            await prisma_1.prisma.share.create({
-                data: {
-                    jobId,
-                    slug: Math.random().toString(36).slice(2, 10),
-                },
-            });
-        }
+        // const existingShare = await prisma.share.findFirst({
+        //   where: { jobId }
+        // })
+        // if (!existingShare) {
+        //   await prisma.share.create({
+        //     data: {
+        //       jobId,
+        //       slug: Math.random().toString(36).slice(2, 10),
+        //     },
+        //   })
+        // }
     }
     catch (err) {
         console.error('[worker ERROR]', err);

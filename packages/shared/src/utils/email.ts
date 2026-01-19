@@ -1,5 +1,6 @@
 // @shared/utils/email.ts
-import nodemailer, { Transporter, SentMessageInfo } from 'nodemailer'
+import nodemailer from 'nodemailer'
+import SMTPTransport from 'nodemailer/lib/smtp-transport'
 import { env } from '../env'
 
 interface EmailOptions {
@@ -19,16 +20,15 @@ interface VerifyError {
 // Create transporter with cPanel SMTP settings
 const transporter = nodemailer.createTransport({
   host: env.SMTP_HOST,
-  port: env.SMTP_PORT,
-  secure: env.SMTP_SECURE, // true for 465, false for other ports
+  port: Number(env.SMTP_PORT),
+  secure: env.SMTP_SECURE === 'true', // true for 465
   auth: {
     user: env.SMTP_USER,
     pass: env.SMTP_PASS,
   },
-  // Add these for better debugging
   debug: process.env.NODE_ENV !== 'production',
   logger: process.env.NODE_ENV !== 'production',
-})
+} as SMTPTransport.Options)
 
 // Verify connection on startup
 transporter.verify((error: VerifyError | null, success: true | undefined) => {

@@ -8,23 +8,28 @@ const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
 const routes_1 = require("./routes");
-// console.log('[AWS env]', {
-//   id: process.env.S3_ACCESS_KEY_ID,
-//   region: process.env.S3_REGION || process.env.AWS_REGION,
-//   bucket: process.env.S3_BUCKET
-// })
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
 app.use(express_1.default.json({ limit: '2mb' }));
 app.use((0, morgan_1.default)('dev'));
+console.log('ROUTER FILE LOADED');
+// Add root redirect to /studio
+app.get('/', (_req, res) => {
+    res.redirect('/studio');
+});
 app.use('/api', routes_1.router);
 app.get('/health', (_req, res) => res.json({ message: 'API is running 🚀' }));
-const port = process.env.PORT || 4000;
-app.listen(port, () => console.log(`API listening on http://localhost:${port}`));
+// Error handler should be AFTER routes
 app.use((err, _req, res, _next) => {
     console.error('[unhandled]', err);
     res.status(500).json({
         error: 'INTERNAL_ERROR',
         message: err?.message || 'Unexpected error',
     });
+});
+const port = Number(process.env.PORT) || 4000;
+// ⚠️ CRITICAL: Bind to 0.0.0.0 for Railway/cloud platforms
+app.listen(port, '0.0.0.0', () => {
+    console.log(`API listening on port ${port}`);
+    console.log(`Health check: http://0.0.0.0:${port}/health`);
 });

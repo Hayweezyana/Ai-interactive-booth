@@ -1,11 +1,11 @@
 "use strict";
+// import type { VideoProvider } from '@shared/video/provider'
+// import { videoGen } from './bananaProvider'
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getVideoProvider = getVideoProvider;
-const bananaProvider_1 = require("./bananaProvider");
-function getVideoProvider(name) {
-    switch (name) {
-        case 'banana':
-        default:
-            return bananaProvider_1.videoGen;
-    }
-}
+// export function getVideoProvider(name?: string): VideoProvider {
+//   switch (name) {
+//     case 'banana':
+//     default:
+//       return videoGen as unknown as VideoProvider
+//   }
+// }
