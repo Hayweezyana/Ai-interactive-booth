@@ -145,29 +145,15 @@ router.get('/jobs/:id', async (req, res, next) => {
     // load job with relations that exist on the generated client (resultVideo + sourceImage)
     const job = await prisma.job.findUnique({
       where: { id: req.params.id },
-      include: { resultVideo: true, sourceImage: true },
+      include: { resultVideo: true, sourceImage: true, shares: true, },
     })
     if (!job) return res.status(404).end()
-
-    const resultUrl = job.resultVideo ? publicUrl(job.resultVideo.bucketKey) : undefined
-    const sourceImageUrl = job.sourceImage ? publicUrl(job.sourceImage.bucketKey) : undefined
-
-    // secondary image relation may not be present on the generated client types,
-    // so load it explicitly if the job has a secondaryImageId scalar field.
-    let secondaryImageUrl: string | undefined = undefined
-    // use any/ts-ignore to avoid type errors if the scalar field isn't present in types
-    // @ts-ignore
-    const secondaryId = (job as any).secondaryImageId
-    if (secondaryId) {
-      const secondary = await prisma.asset.findUnique({ where: { id: secondaryId } })
-      if (secondary) secondaryImageUrl = publicUrl(secondary.bucketKey)
-    }
-
-    res.json({
-      ...job,
-      resultUrl,
-      sourceImageUrl,
-      secondaryImageUrl,
+      res.json({
+        ...job,
+        resultUrl: job.resultVideo ? publicUrl(job.resultVideo.bucketKey) : undefined,
+        shareUrl: job.shares?.[0]
+        ? `${process.env.APP_ORIGIN}/v/${job.shares[0].slug}`
+        : undefined,
     })
   } catch (e) {
     next(e)
@@ -180,63 +166,90 @@ router.get('/jobs/:id', async (req, res, next) => {
  */
 router.post('/jobs/:id/email', async (req, res, next) => {
   try {
-    const schema = z.object({ to: z.string().email() })
-    const { to } = schema.parse(req.body)
+    const { to } = z
+      .object({ to: z.string().email() })
+      .parse(req.body)
+
     const job = await prisma.job.findUnique({
       where: { id: req.params.id },
-      include: { resultVideo: true },
+      include: { shares: true },
     })
-    if (!job || !job.resultVideo) return res.status(400).json({ error: 'No result yet' })
-    const url = publicUrl(job.resultVideo.bucketKey)
-    await sendEmail(to,'Your video is ready 🎉',
-  `
-    <p>Your video is ready:</p>
-    <p><a href="${url}">Watch / Download Video</a></p>
-    <p>You can also scan the QR code on the screen to access it.</p>
-  `)
+
+    if (!job?.shares) {
+      return res.status(400).json({ error: 'Result not ready' })
+    }
+
+    const link = `${process.env.APP_ORIGIN}/v/${job.shares[0].slug}`
+
+    await sendEmail(
+      to,
+      'Your video is ready 🎉',
+      `
+        <p>Your video is ready:</p>
+        <p><a href="${link}">Watch / Download Video</a></p>
+        <p>You can also scan the QR code on the screen to access it.</p>
+      `
+    )
+
     res.json({ ok: true })
   } catch (e) {
     next(e)
   }
 })
 
+
 /**
  * GET /jobs/:id/qr
  * Create or fetch share record and return QR PNG
  */
+/**
+ * GET /jobs/:id/qr
+ * Return QR PNG for existing share
+ */
 router.get('/jobs/:id/qr', async (req, res, next) => {
   try {
-    const jobId = req.params.id
-    let share = await prisma.share.findFirst({ where: { jobId } })
-
-    if (!share) {
-      const slug = Math.random().toString(36).slice(2, 10)
-      share = await prisma.share.create({
-        data: { jobId, slug },
-      })
+    if (!process.env.APP_ORIGIN) {
+      throw new Error('APP_ORIGIN not set')
     }
 
-    const png = await generateQR(`${process.env.APP_ORIGIN}/v/${share.slug}`)
-    res.setHeader('Content-Type', 'image/png').send(png)
+    const share = await prisma.share.findFirst({
+      where: { jobId: req.params.id },
+    })
+
+    if (!share) {
+      return res.status(404).json({ error: 'Share not ready yet' })
+    }
+
+    const png = await generateQR(
+      `${process.env.APP_ORIGIN}/v/${share.slug}`
+    )
+
+    res.setHeader('Content-Type', 'image/png')
+    res.send(png)
   } catch (e) {
     next(e)
   }
 })
 
-router.get('/share/:slug', async (req, res, next) => {
+
+router.get('/v/:slug', async (req, res, next) => {
   try {
     const share = await prisma.share.findUnique({
       where: { slug: req.params.slug },
-      include: { job: { include: { resultVideo: true } } },
+      include: {
+        job: {
+          include: { resultVideo: true },
+        },
+      },
     })
 
     if (!share?.job?.resultVideo) {
-      return res.status(404).json({ error: 'Not found' })
+      return res.status(404).end()
     }
 
-    res.json({
-      url: publicUrl(share.job.resultVideo.bucketKey),
-    })
+    const url = publicUrl(share.job.resultVideo.bucketKey)
+
+    return res.redirect(url)
   } catch (e) {
     next(e)
   }
