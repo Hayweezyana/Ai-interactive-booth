@@ -31,13 +31,13 @@ const DEFAULT_PROMPTS: DefaultPrompt[] = [
   {
     label: 'Hug Ruger',
     text: `
-make the image of the person in the first photo hug the second person from the second photo professionally and naturally, wide angle and portrait.
+make the image of the person in the first photo walk to hug the second person from the second photo professionally and naturally, wide angle and portrait.
 
 Use the provided reference images as visual inspiration for the general look
 and style of the people, while creating a new, original image.
 
 Guidelines:
-- Both faces clearly visible
+- Both faces clearly visible and look alike preserved
 - Natural expressions and relaxed body language
 - Realistic lighting and everyday photography style
 - Casual clothing
@@ -49,20 +49,19 @@ This is a newly created image inspired by the references.`,
   {
     label: 'Hug Poco',
     text: `
-make the image of the person in the first photo hug the second person from the second photo professionally and naturally, wide angle and portrait.
+make the image of the person in the first photo walk to hug the second person from the second photo professionally and naturally, wide angle and portrait.
 
 Use the provided reference images as visual inspiration for the general look
 and style of the people, while creating a new, original image.
 
 Guidelines:
-- Both faces clearly visible
+- Both faces clearly visible and look alike preserved
 - Natural expressions and relaxed body language
 - Realistic lighting and everyday photography style
 - Casual clothing
 - No dramatic filters or cinematic effects
 
-This is a newly created image inspired by the references.
-`,
+This is a newly created image inspired by the references.`,
     requiresSecond: true,
   },
   {
@@ -190,7 +189,7 @@ export default function Studio() {
 
     const preset = String(formData.get('preset') || '')
     const aspect = String(formData.get('aspect') || '16:9')
-    const durationSec = Number(formData.get('duration') || 8)
+    const durationSec = Number(formData.get('duration') || 5)
 
     setLoading(true)
     try {
@@ -285,7 +284,7 @@ export default function Studio() {
         prompt: prompt.trim(),
         promptPreset: String(formData.get('preset') || ''),
         aspect: String(formData.get('aspect') || '16:9'),
-        durationSec: Number(formData.get('duration') || 8),
+        durationSec: Number(formData.get('duration') || 5),
       }
 
       const created = await fetch(`${API}/jobs`, {
@@ -509,7 +508,7 @@ useEffect(() => {
               <a href={job.resultUrl} download style={{ display: 'block', textAlign: 'center', marginTop: '16px', color: '#38bdf8', fontSize: '14px', textDecoration: 'none' }}>
                 Download Video ↓
               </a>
-              {job && job.status === 'COMPLETED' && (
+              {job && job.status === 'COMPLETE' && (
   <div style={{ marginTop: 24 }}>
     <h3>Share your video</h3>
 
