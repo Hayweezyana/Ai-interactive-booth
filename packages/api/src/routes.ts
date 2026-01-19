@@ -4,7 +4,7 @@ import { prisma } from '@shared/prisma'
 import { getSignedUpload, publicUrl } from '@shared/utils/storage'
 import { enqueueJob } from './queue/enqueue'
 import { generateQR } from '@shared/utils/qr'
-import { sendEmail } from '@shared/utils/email'
+import { sendEmail, getVideoEmailTemplate } from '@shared/utils/email'
 import { randomUUID } from 'node:crypto'
 import { S3Client } from '@aws-sdk/client-s3'
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post'
@@ -169,39 +169,62 @@ router.get('/jobs/:id', async (req, res, next) => {
  * POST /jobs/:id/email
  * Send generated video via email.
  */
+// In your routes.ts - UPDATE the email route
+
 router.post('/jobs/:id/email', async (req, res, next) => {
   try {
-    const { to } = z
-      .object({ to: z.string().email() })
-      .parse(req.body)
-
+    const schema = z.object({ to: z.string().email() })
+    const { to } = schema.parse(req.body)
+    
     const job = await prisma.job.findUnique({
       where: { id: req.params.id },
-      include: { shares: true },
+      include: { 
+        resultVideo: true,
+        shares: true 
+      },
     })
-
-    if (!job?.shares) {
-      return res.status(400).json({ error: 'Result not ready' })
+    
+    if (!job || !job.resultVideo) {
+      return res.status(400).json({ error: 'No result yet' })
     }
 
-    const link = `${process.env.APP_ORIGIN}/v/${job.shares[0].slug}`
+    // Get the video URL
+    const videoUrl = publicUrl(job.resultVideo.bucketKey)
+    
+    // Get the share URL (preferred for tracking and better UX)
+    const shareUrl = job.shares?.[0]
+      ? `${process.env.APP_ORIGIN}/v/${job.shares[0].slug}`
+      : undefined
+
+    console.log('[email] Sending video email:', {
+      to,
+      videoUrl: videoUrl.substring(0, 50) + '...',
+      shareUrl,
+    })
+
+    // Use the template
+    const htmlContent = getVideoEmailTemplate(videoUrl, shareUrl)
 
     await sendEmail(
       to,
-      'Your video is ready 🎉',
-      `
-        <p>Your video is ready:</p>
-        <p><a href="${link}">Watch / Download Video</a></p>
-        <p>You can also scan the QR code on the screen to access it.</p>
-      `
+      'Your Immersia AI Video is Ready! 🎬',
+      htmlContent
     )
 
-    res.json({ ok: true })
-  } catch (e) {
-    next(e)
+    console.log('[email] Email sent successfully to:', to)
+
+    res.json({ 
+      ok: true,
+      message: 'Email sent successfully'
+    })
+  } catch (e: any) {
+    console.error('[email] Error:', e)
+    res.status(500).json({ 
+      error: 'Failed to send email',
+      message: e.message 
+    })
   }
 })
-
 
 /**
  * GET /jobs/:id/qr
@@ -248,9 +271,16 @@ router.get('/v/:slug', async (req, res, next) => {
       },
     })
 
-    if (!share?.job?.resultVideo) {
-      return res.status(404).end()
-    }
+    if (!share) {
+  return res.status(404).send('Invalid link')
+}
+
+if (!share.job.resultVideo) {
+  return res
+    .status(200)
+    .send('Your video is still processing. Please refresh shortly.')
+}
+
 
     const url = publicUrl(share.job.resultVideo.bucketKey)
 
@@ -264,4 +294,24 @@ router.get('/debug/shares', async (_req, res) => {
   const shares = await prisma.share.findMany()
   res.json(shares)
 })
+
+router.get('/debug/share/:slug', async (req, res) => {
+  const share = await prisma.share.findUnique({
+    where: { slug: req.params.slug },
+    include: {
+      job: {
+        include: { resultVideo: true },
+      },
+    },
+  })
+
+  res.json({
+    found: !!share,
+    share,
+    jobId: share?.jobId,
+    resultVideoId: share?.job?.resultVideoId,
+    hasResultVideo: !!share?.job?.resultVideo,
+  })
+})
+
 

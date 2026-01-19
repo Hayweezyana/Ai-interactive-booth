@@ -9,11 +9,12 @@ app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use(morgan('dev'));
 
+console.log('ROUTER FILE LOADED')
+
 // Add root redirect to /studio
 app.get('/', (_req: Request, res: Response) => {
   res.redirect('/studio');
 });
-
 app.use('/api', router);
 app.get('/health', (_req: Request, res: Response) => res.json({ message: 'API is running 🚀' }));
 
