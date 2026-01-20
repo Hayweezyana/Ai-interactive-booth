@@ -5,3 +5,22 @@ node_modules
 .env.example
 
 service-account-key.json
+# Next.js
+web/.next/
+web/.next/**
+
+# Node / TS builds
+dist/
+shared/dist/
+shared/dist/**
+
+# Caches
+*.tsbuildinfo
+.cache/
+.next/cache/
+
+# Logs
+*.log
+
+# Test files
+test-qr.js
