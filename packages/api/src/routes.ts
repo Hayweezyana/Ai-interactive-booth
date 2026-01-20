@@ -126,12 +126,12 @@ router.post('/jobs', async (req, res, next) => {
 
     const job = await prisma.job.create({ data: jobData })
 
-await prisma.share.create({
-  data: {
-    jobId: job.id,
-    slug: Math.random().toString(36).slice(2, 10),
-  },
-})
+    await prisma.share.create({
+      data: {
+        jobId: job.id,
+        slug: Math.random().toString(36).slice(2, 10),
+      },
+    })
 
     await enqueueJob(job.id)
 
@@ -234,9 +234,14 @@ router.post('/jobs/:id/email', async (req, res, next) => {
  * GET /jobs/:id/qr
  * Return QR PNG for existing share
  */
+// Replace your QR route with this version
+
 router.get('/jobs/:id/qr', async (req, res, next) => {
   try {
-    if (!process.env.APP_ORIGIN) {
+    console.log('[QR] Request for job:', req.params.id)
+    
+    if (!process.env.NEXT_PUBLIC_API_BASE) {
+      console.error('[QR] APP_ORIGIN not set')
       throw new Error('APP_ORIGIN not set')
     }
 
@@ -244,21 +249,51 @@ router.get('/jobs/:id/qr', async (req, res, next) => {
       where: { jobId: req.params.id },
     })
 
+    console.log('[QR] Share found:', !!share, share?.slug)
+
     if (!share) {
+      console.error('[QR] No share found for job:', req.params.id)
       return res.status(404).json({ error: 'Share not ready yet' })
     }
 
-    const png = await generateQR(
-      `${process.env.APP_ORIGIN}/v/${share.slug}`
-    )
+    const shareUrl = `${process.env.NEXT_PUBLIC_API_BASE}/api/v/${share.slug}`
+    console.log('[QR] Generating QR for:', shareUrl)
+
+    const png = await generateQR(shareUrl)
+    
+    console.log('[QR] Generated PNG, size:', png.length, 'bytes')
 
     res.setHeader('Content-Type', 'image/png')
+    res.setHeader('Content-Length', png.length.toString())
     res.send(png)
-  } catch (e) {
-    next(e)
+    
+    console.log('[QR] Sent successfully')
+  } catch (e: any) {
+    console.error('[QR] Error:', e)
+    res.status(500).json({ 
+      error: 'Failed to generate QR',
+      message: e.message 
+    })
   }
 })
 
+// Debug endpoint to test QR generation directly
+router.get('/debug/qr-test', async (req, res) => {
+  try {
+    const testUrl = req.query.url as string || 'https://example.com'
+    console.log('[QR Debug] Generating for:', testUrl)
+    
+    const png = await generateQR(testUrl)
+    
+    console.log('[QR Debug] Generated, size:', png.length)
+    
+    res.setHeader('Content-Type', 'image/png')
+    res.send(png)
+  } catch (e: any) {
+    console.error('[QR Debug] Error:', e)
+    res.status(500).json({ error: e.message })
+  }
+})
 
 router.get('/v/:slug', async (req, res, next) => {
   try {

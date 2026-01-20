@@ -8,8 +8,13 @@ const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
 const routes_1 = require("./routes");
+const API_BASE = process.env.APP_ORIGIN || 'http://localhost:4000';
+const API = `${API_BASE}`;
 const app = (0, express_1.default)();
-app.use((0, cors_1.default)());
+app.use((0, cors_1.default)({
+    origin: API,
+    credentials: true,
+}));
 app.use(express_1.default.json({ limit: '2mb' }));
 app.use((0, morgan_1.default)('dev'));
 console.log('ROUTER FILE LOADED');
