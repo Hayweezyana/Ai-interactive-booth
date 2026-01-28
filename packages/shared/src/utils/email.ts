@@ -1,41 +1,90 @@
-// @shared/utils/email.ts
+// @shared/utils/email.ts - Production-Ready Version
+
 import nodemailer from 'nodemailer'
-import SMTPTransport from 'nodemailer/lib/smtp-transport'
 import { env } from '../env'
 
-interface EmailOptions {
-  to: string
-  subject: string
-  html: string
+interface TransporterConfig {
+  host: string
+  port: number
+  secure: boolean
+  auth: {
+    user: string
+    pass: string
+  }
+  pool: boolean
+  maxConnections: number
+  maxMessages: number
+  rateDelta: number
+  rateLimit: number
+  connectionTimeout: number
+  greetingTimeout: number
+  socketTimeout: number
+  debug: boolean
+  logger: boolean
 }
 
-interface VerifyError {
+interface EmailError extends Error {
   code?: string
   command?: string
   response?: string
   responseCode?: number
-  message: string
 }
 
-// Create transporter with cPanel SMTP settings
-const transporter = nodemailer.createTransport({
-  host: env.SMTP_HOST,
-  port: Number(env.SMTP_PORT),
-  secure: env.SMTP_SECURE === 'true', // true for 465
-  auth: {
-    user: env.SMTP_USER,
-    pass: env.SMTP_PASS,
-  },
-  debug: process.env.NODE_ENV !== 'production',
-  logger: process.env.NODE_ENV !== 'production',
-} as SMTPTransport.Options)
+// Create transporter with better error handling and connection pooling
+const createTransporter = () => {
+  console.log('[email] Creating transporter...')
+  console.log('[email] Host:', env.SMTP_HOST)
+  console.log('[email] Port:', env.SMTP_PORT)
+  console.log('[email] Secure:', env.SMTP_SECURE)
+  console.log('[email] User:', env.SMTP_USER)
 
-// Verify connection on startup
-transporter.verify((error: VerifyError | null, success: true | undefined) => {
+  const config: TransporterConfig = {
+    host: env.SMTP_HOST,
+    port: Number(env.SMTP_PORT),
+    secure: env.SMTP_SECURE === 'true',
+    auth: {
+      user: env.SMTP_USER,
+      pass: env.SMTP_PASS,
+    },
+    // Add these for production reliability
+    pool: true, // Use connection pooling
+    maxConnections: 5,
+    maxMessages: 10,
+    rateDelta: 1000, // Delay between messages
+    rateLimit: 5, // Max 5 emails per rateDelta
+    // Increase timeouts for slow connections
+    connectionTimeout: 10000, // 10 seconds
+    greetingTimeout: 5000,
+    socketTimeout: 10000,
+    // Debug in development
+    debug: process.env.NODE_ENV !== 'production',
+    logger: process.env.NODE_ENV !== 'production',
+  }
+
+  // For Railway/cloud platforms, try to avoid connection timeout
+  if (process.env.NODE_ENV === 'production') {
+    // Increase timeouts even more in production
+    config.connectionTimeout = 30000 // 30 seconds
+    config.greetingTimeout = 10000
+    config.socketTimeout = 30000
+  }
+
+  return nodemailer.createTransport(config)
+}
+
+const transporter = createTransporter()
+
+// Verify connection on startup (but don't block if it fails)
+transporter.verify((error: Error | null, success: true | undefined) => {
   if (error) {
-    console.error('[email] SMTP connection failed:', error)
+    console.error('[email] ⚠️  SMTP verification failed:', error.message)
+    console.error('[email] Code:', (error as EmailError).code)
+    if ((error as EmailError).code === 'ETIMEDOUT') {
+      console.error('[email] Connection timeout - check if Railway blocks SMTP ports')
+      console.error('[email] Try using port 587 or consider SendGrid/Resend instead')
+    }
   } else {
-    console.log('[email] SMTP server is ready to send emails')
+    console.log('[email] ✅ SMTP server is ready to send emails')
   }
 })
 
@@ -52,25 +101,36 @@ export async function sendEmail(
       to,
       subject,
       html,
-      // Add plain text version for better deliverability
-      text: html.replace(/<[^>]*>/g, ''), // Strip HTML tags
+      // Add plain text version
+      text: html.replace(/<[^>]*>/g, ''),
     })
 
-    console.log('[email] Message sent:', info.messageId)
+    console.log('[email] ✅ Message sent:', info.messageId)
     console.log('[email] Response:', info.response)
-  } catch (error: any) {
-    console.error('[email] Send failed:', error)
+  } catch (error: unknown) {
+    const emailError = error as EmailError
+    console.error('[email] ❌ Send failed:', emailError.message)
     console.error('[email] Error details:', {
-      code: error.code,
-      command: error.command,
-      response: error.response,
-      responseCode: error.responseCode,
+      code: emailError.code,
+      command: emailError.command,
+      response: emailError.response,
+      responseCode: emailError.responseCode,
     })
-    throw error
+
+    // Provide helpful error messages
+    if (emailError.code === 'ETIMEDOUT') {
+      throw new Error('Email service timeout - the hosting platform may block SMTP connections')
+    } else if (emailError.code === 'ECONNREFUSED') {
+      throw new Error('SMTP connection refused - check server and port settings')
+    } else if (emailError.code === 'EAUTH') {
+      throw new Error('SMTP authentication failed - check username and password')
+    } else {
+      throw new Error(`Email failed: ${emailError.message}`)
+    }
   }
 }
 
-// Template for video ready email
+// Template function (unchanged)
 export function getVideoEmailTemplate(
   videoUrl: string,
   shareUrl?: string
@@ -113,7 +173,7 @@ export function getVideoEmailTemplate(
       </div>
 
       <p style="margin: 30px 0 10px 0; color: #666; font-size: 14px; line-height: 1.6;">
-        Or copy this link to share with friends:
+        Or copy this link to share:
       </p>
       
       <div style="background: #f3f4f6; padding: 12px; border-radius: 6px; word-break: break-all; font-family: monospace; font-size: 13px; color: #555; border: 1px solid #e5e7eb;">
@@ -125,19 +185,13 @@ export function getVideoEmailTemplate(
         <p style="margin: 0 0 10px 0; color: #999; font-size: 13px;">
           💡 <strong>Tip:</strong> Download your video soon! Links may expire after 30 days.
         </p>
-        <p style="margin: 0; color: #999; font-size: 12px;">
-          This video was created using AI technology. Share responsibly!
-        </p>
       </div>
     </div>
 
     <!-- Footer -->
     <div style="background: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
       <p style="margin: 0; color: #999; font-size: 12px;">
-        © ${new Date().getFullYear()} Immersia AI Studio. All rights reserved.
-      </p>
-      <p style="margin: 8px 0 0 0; color: #999; font-size: 11px;">
-        Immersia VR - Creating Immersive Experiences
+        © ${new Date().getFullYear()} Immersia AI Studio
       </p>
     </div>
   </div>
