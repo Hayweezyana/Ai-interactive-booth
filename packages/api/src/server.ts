@@ -15,8 +15,25 @@ const APP_ORIGIN = process.env.APP_ORIGIN || 'http://localhost:4000'
 console.log('[server] CORS allowed origins:', FRONTEND_URL)
 console.log('[server] APP_ORIGIN:', APP_ORIGIN)
 
+const allowedOrigins: string[] = [
+  'https://immersiavideobooth.up.railway.app',
+  'http://localhost:3000'
+]
+
 app.use(cors({
-  origin: [FRONTEND_URL, APP_ORIGIN],
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      // Allow server-to-server / curl / health checks
+      if (!origin) return callback(null, true)
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true)
+      }
+
+      return callback(
+        new Error(`CORS blocked origin: ${origin}`),
+        false
+      )
+    },
   credentials: true,
 }))
 
@@ -24,6 +41,7 @@ app.use(express.json({ limit: '2mb' }))
 app.use(morgan('dev'))
 
 console.log('[server] Router file loaded')
+app.options('*', cors())
 
 // ✅ FIX 2: Move /v/:slug BEFORE /api routes to avoid conflicts
 app.get('/v/:slug', async (req: Request, res: Response) => {
