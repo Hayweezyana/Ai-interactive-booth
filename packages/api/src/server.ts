@@ -3,6 +3,8 @@ import express, { Request, Response } from 'express'
 import cors from 'cors';
 import morgan from 'morgan';
 import { router } from './routes';
+import { prisma } from '@shared/prisma'
+import { publicUrl } from './utils/storage';
 
 const API_BASE = process.env.APP_ORIGIN || 'http://localhost:4000'
 const API = `${API_BASE}`
@@ -23,9 +25,33 @@ app.get('/health', (_req: Request, res: Response) => res.json({ message: 'API is
 app.get('/', (_req: Request, res: Response) => {
   res.redirect('/studio');
 });
-app.get('/v/:slug', async (req, res) => {
-  
+app.get('/v/:slug', async (req: Request, res: Response) => {
+  try {
+    const share = await prisma.share.findUnique({
+      where: { slug: req.params.slug },
+      include: {
+        job: { include: { resultVideo: true } },
+      },
+    })
+
+    if (!share) {
+      return res.status(404).send('Invalid link')
+    }
+
+    if (!share.job.resultVideo) {
+      return res
+        .status(200)
+        .send('Your video is still processing. Please refresh shortly.')
+    }
+
+    const url = publicUrl(share.job.resultVideo.bucketKey)
+    return res.redirect(url)
+  } catch (e) {
+    console.error('[share]', e)
+    return res.status(500).send('Internal error')
+  }
 })
+
 
 // Error handler should be AFTER routes
 app.use((err: any, _req: any, res: any, _next: any) => {

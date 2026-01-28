@@ -256,7 +256,7 @@ router.get('/jobs/:id/qr', async (req, res, next) => {
       return res.status(404).json({ error: 'Share not ready yet' })
     }
 
-    const shareUrl = `${process.env.NEXT_PUBLIC_API_BASE}/api/v/${share.slug}`
+    const shareUrl = `${process.env.NEXT_PUBLIC_API_BASE}/v/${share.slug}`
     console.log('[QR] Generating QR for:', shareUrl)
 
     const png = await generateQR(shareUrl)
@@ -295,35 +295,35 @@ router.get('/debug/qr-test', async (req, res) => {
   }
 })
 
-router.get('/v/:slug', async (req, res, next) => {
-  try {
-    const share = await prisma.share.findUnique({
-      where: { slug: req.params.slug },
-      include: {
-        job: {
-          include: { resultVideo: true },
-        },
-      },
-    })
+// router.get('/v/:slug', async (req, res, next) => {
+//   try {
+//     const share = await prisma.share.findUnique({
+//       where: { slug: req.params.slug },
+//       include: {
+//         job: {
+//           include: { resultVideo: true },
+//         },
+//       },
+//     })
 
-    if (!share) {
-  return res.status(404).send('Invalid link')
-}
+//     if (!share) {
+//   return res.status(404).send('Invalid link')
+// }
 
-if (!share.job.resultVideo) {
-  return res
-    .status(200)
-    .send('Your video is still processing. Please refresh shortly.')
-}
+// if (!share.job.resultVideo) {
+//   return res
+//     .status(200)
+//     .send('Your video is still processing. Please refresh shortly.')
+// }
 
 
-    const url = publicUrl(share.job.resultVideo.bucketKey)
+//     const url = publicUrl(share.job.resultVideo.bucketKey)
 
-    return res.redirect(url)
-  } catch (e) {
-    next(e)
-  }
-})
+//     return res.redirect(url)
+//   } catch (e) {
+//     next(e)
+//   }
+// })
 
 router.get('/debug/shares', async (_req, res) => {
   const shares = await prisma.share.findMany()
