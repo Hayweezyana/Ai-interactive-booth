@@ -4,11 +4,10 @@ import cors from 'cors';
 import morgan from 'morgan';
 import { router } from './routes';
 import { prisma } from '@shared/prisma'
-import { publicUrl } from './utils/storage';
+import { publicUrl } from '@shared/utils/storage'
 
 const API_BASE = process.env.APP_ORIGIN || 'http://localhost:4000'
 const API = `${API_BASE}`
-
 const app = express();
 app.use(cors({
   origin: API,
@@ -19,12 +18,6 @@ app.use(morgan('dev'));
 
 console.log('ROUTER FILE LOADED')
 
-// Add root redirect to /studio
-app.use('/api', router);
-app.get('/health', (_req: Request, res: Response) => res.json({ message: 'API is running 🚀' }));
-app.get('/', (_req: Request, res: Response) => {
-  res.redirect('/studio');
-});
 app.get('/v/:slug', async (req: Request, res: Response) => {
   try {
     const share = await prisma.share.findUnique({
@@ -52,8 +45,13 @@ app.get('/v/:slug', async (req: Request, res: Response) => {
   }
 })
 
+// Add root redirect to /studio
+app.use('/api', router);
+app.get('/health', (_req: Request, res: Response) => res.json({ message: 'API is running 🚀' }));
+app.get('/', (_req: Request, res: Response) => {
+  res.redirect('/studio');
+});
 
-// Error handler should be AFTER routes
 app.use((err: any, _req: any, res: any, _next: any) => {
   console.error('[unhandled]', err)
   res.status(500).json({

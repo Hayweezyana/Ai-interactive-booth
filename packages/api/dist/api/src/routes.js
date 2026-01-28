@@ -215,7 +215,7 @@ exports.router.post('/jobs/:id/email', async (req, res, next) => {
 exports.router.get('/jobs/:id/qr', async (req, res, next) => {
     try {
         console.log('[QR] Request for job:', req.params.id);
-        if (!process.env.APP_ORIGIN) {
+        if (!process.env.NEXT_PUBLIC_API_BASE) {
             console.error('[QR] APP_ORIGIN not set');
             throw new Error('APP_ORIGIN not set');
         }
@@ -227,7 +227,7 @@ exports.router.get('/jobs/:id/qr', async (req, res, next) => {
             console.error('[QR] No share found for job:', req.params.id);
             return res.status(404).json({ error: 'Share not ready yet' });
         }
-        const shareUrl = `${process.env.APP_ORIGIN}/v/${share.slug}`;
+        const shareUrl = `${process.env.NEXT_PUBLIC_API_BASE}/v/${share.slug}`;
         console.log('[QR] Generating QR for:', shareUrl);
         const png = await (0, qr_1.generateQR)(shareUrl);
         console.log('[QR] Generated PNG, size:', png.length, 'bytes');
@@ -259,31 +259,30 @@ exports.router.get('/debug/qr-test', async (req, res) => {
         res.status(500).json({ error: e.message });
     }
 });
-exports.router.get('/v/:slug', async (req, res, next) => {
-    try {
-        const share = await prisma_1.prisma.share.findUnique({
-            where: { slug: req.params.slug },
-            include: {
-                job: {
-                    include: { resultVideo: true },
-                },
-            },
-        });
-        if (!share) {
-            return res.status(404).send('Invalid link');
-        }
-        if (!share.job.resultVideo) {
-            return res
-                .status(200)
-                .send('Your video is still processing. Please refresh shortly.');
-        }
-        const url = (0, storage_1.publicUrl)(share.job.resultVideo.bucketKey);
-        return res.redirect(url);
-    }
-    catch (e) {
-        next(e);
-    }
-});
+// router.get('/v/:slug', async (req, res, next) => {
+//   try {
+//     const share = await prisma.share.findUnique({
+//       where: { slug: req.params.slug },
+//       include: {
+//         job: {
+//           include: { resultVideo: true },
+//         },
+//       },
+//     })
+//     if (!share) {
+//   return res.status(404).send('Invalid link')
+// }
+// if (!share.job.resultVideo) {
+//   return res
+//     .status(200)
+//     .send('Your video is still processing. Please refresh shortly.')
+// }
+//     const url = publicUrl(share.job.resultVideo.bucketKey)
+//     return res.redirect(url)
+//   } catch (e) {
+//     next(e)
+//   }
+// })
 exports.router.get('/debug/shares', async (_req, res) => {
     const shares = await prisma_1.prisma.share.findMany();
     res.json(shares);
