@@ -9,7 +9,7 @@ const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
 const routes_1 = require("./routes");
 const prisma_1 = require("@shared/prisma");
-const storage_1 = require("./utils/storage");
+const storage_1 = require("@shared/utils/storage");
 const API_BASE = process.env.APP_ORIGIN || 'http://localhost:4000';
 const API = `${API_BASE}`;
 const app = (0, express_1.default)();
@@ -20,12 +20,6 @@ app.use((0, cors_1.default)({
 app.use(express_1.default.json({ limit: '2mb' }));
 app.use((0, morgan_1.default)('dev'));
 console.log('ROUTER FILE LOADED');
-// Add root redirect to /studio
-app.use('/api', routes_1.router);
-app.get('/health', (_req, res) => res.json({ message: 'API is running 🚀' }));
-app.get('/', (_req, res) => {
-    res.redirect('/studio');
-});
 app.get('/v/:slug', async (req, res) => {
     try {
         const share = await prisma_1.prisma.share.findUnique({
@@ -50,7 +44,12 @@ app.get('/v/:slug', async (req, res) => {
         return res.status(500).send('Internal error');
     }
 });
-// Error handler should be AFTER routes
+// Add root redirect to /studio
+app.use('/api', routes_1.router);
+app.get('/health', (_req, res) => res.json({ message: 'API is running 🚀' }));
+app.get('/', (_req, res) => {
+    res.redirect('/studio');
+});
 app.use((err, _req, res, _next) => {
     console.error('[unhandled]', err);
     res.status(500).json({
