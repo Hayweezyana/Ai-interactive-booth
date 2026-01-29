@@ -1,16 +1,20 @@
 {
 "compilerOptions": {
-"target": "ES2021",
+"target": "ES2022",
 "module": "CommonJS",
-"moduleResolution": "node16",
+"moduleResolution": "Node",
 "strict": true,
 "esModuleInterop": true,
 "skipLibCheck": true,
+"forceConsistentCasingInFileNames": true,
 "resolveJsonModule": true,
 "outDir": "dist",
 "baseUrl": ".",
 "paths": {
-"@shared/*": ["packages/shared/src/*"]
+    "@shared/*": ["./packages/shared/src/*"],
+"@app/shared/*": ["./packages/shared/src/*"],
+"@shared/prisma": ["./packages/shared/src/generated/client"]
 }
-}
+},
+"exclude": ["node_modules", "dist", ".next"]
 }

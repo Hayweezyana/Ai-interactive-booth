@@ -6,13 +6,13 @@ node_modules
 
 service-account-key.json
 # Next.js
-web/.next/
-web/.next/**
+packages/web/.next/
+packages/web/.next/**
 
 # Node / TS builds
 dist/
-shared/dist/
-shared/dist/**
+packages/shared/dist/
+packages/shared/dist/**
 
 # Caches
 *.tsbuildinfo

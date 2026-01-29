@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { prisma } from '@shared/prisma'
+import { prisma } from '@app/shared/prisma'
 import { getSignedUpload, publicUrl } from '@shared/utils/storage'
 import { enqueueJob } from './queue/enqueue'
 import { generateQR } from '@shared/utils/qr'

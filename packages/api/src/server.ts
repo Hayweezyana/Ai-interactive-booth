@@ -3,7 +3,7 @@ import express, { Request, Response } from 'express'
 import cors from 'cors'
 import morgan from 'morgan'
 import { router } from './routes'
-import { prisma } from '@shared/prisma'
+import { prisma } from '@app/shared/prisma'
 import { publicUrl } from '@shared/utils/storage'
 
 const app = express()
