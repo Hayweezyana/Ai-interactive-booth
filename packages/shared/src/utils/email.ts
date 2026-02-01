@@ -217,7 +217,7 @@ export async function sendEmail(
 
   try {
     const { data, error } = await resend.emails.send({
-      from: 'Immersia AI Studio <noreply@immersiavr.com>',
+      from: 'Immersia AI Studio <noreply@aivideobooth.immersiavr.com>',
       to: [to],
       subject,
       html,
